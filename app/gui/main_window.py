@@ -154,17 +154,10 @@ class MainWindow:
         self.editor_frame = tk.Frame(self.body_frame, bg=self.colors["bg"])
         self.editor_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self.text_editor = tk.Text(
-            self.editor_frame, 
-            bg=self.colors["bg"], 
-            fg=self.colors["variables"], 
-            insertbackground=self.colors["fg"], 
-            wrap=tk.WORD, 
-            font=("Consolas", 12),
-            bd=0,
-            highlightthickness=0
-        )
-        self.text_editor.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        from app.gui.components import CodeEditorFrame
+        self._code_editor_frame = CodeEditorFrame(self.editor_frame, self.colors)
+        self._code_editor_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.text_editor = self._code_editor_frame.text
         
         sample_code = (
             "# Archivo principal\n"
