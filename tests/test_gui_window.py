@@ -56,6 +56,8 @@ class TestMainWindow(unittest.TestCase):
         app = MainWindow(self.root)
         test_text = "Prueba de lectura"
         
+        # Limpiar texto predeterminado si lo hay
+        app.text_editor.delete("1.0", tk.END)
         app.text_editor.insert(tk.END, test_text)
         self.root.update()
         
