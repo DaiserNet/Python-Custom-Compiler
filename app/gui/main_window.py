@@ -1,12 +1,124 @@
 import tkinter as tk
+from tkinter import filedialog # Ventana estándar para elegir archivos
 import customtkinter as ctk
+import os
 
 class MainWindow:
     def __init__(self, root: ctk.CTk):
         self.root = root
+
+        self.editors = {} # Para almacenar referencias a los editores de cada pestaña
+        # Logica de apertura de archivos
+        self.opened_files = {}
+        self.untitled_count = 0 # Contador para archivos nuevos
+
+        # Creacion de interfaz
         self._setup_window()
         self._setup_colors()
         self._create_widgets()
+    
+    # Función para abrir archivos, con manejo de múltiples pestañas y prevención de duplicados
+    def open_file(self):
+        # Seleccion de archivos
+        file_path = filedialog.askopenfilename(filetypes=[("Arvhivos de texto", "*.txt"), ("Todos los archivos", "*.*")])
+        if file_path:
+            file_name = os.path.basename(file_path)
+
+            # Leer contenido
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            
+            # Guardar en nuestro registro y crear pestaña
+            self.opened_files[file_name] = file_path
+            self._create_new_tab(file_name, content)
+
+    def _on_open_file(self):
+        file_path = filedialog.askopenfilename(
+            title="Abrir archivo de código",
+            filetypes=[("Archivos de texto", "*.txt"), ("Python", "*.py"), ("Todos", "*.*")]
+        )
+        
+        if file_path:
+            file_name = os.path.basename(file_path)
+            try:
+                # Intentamos leer con UTF-8 (el estándar)
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                # PLAN B: Si falla, intentamos con 'latin-1', que lee casi cualquier byte
+                try:
+                    with open(file_path, "r", encoding="latin-1") as f:
+                        content = f.read()
+                except Exception as e:
+                    print(f"Error fatal al leer: {e}")
+                    return
+
+            # Si llegamos aquí, la lectura fue exitosa
+            self._add_new_tab(file_name, content)
+            # Guardamos la ruta en nuestro diccionario para el futuro "Save"
+            self.opened_files[file_name] = file_path
+
+    def _on_new_file(self):
+        self.untitled_count += 1
+        new_name = f"Untitled-{self.untitled_count}.txt"
+        
+        # Agregamos al registro de archivos abiertos
+        self.opened_files[new_name] = None # None porque aún no tiene ruta en disco
+        
+        # Creamos la pestaña
+        self._add_new_tab(new_name, "")
+        
+        # Cerramos el menú
+        if hasattr(self, "file_menu") and self.file_menu.winfo_exists():
+            self.file_menu.destroy()
+    
+    def _on_close_file(self):
+        tab_name = self.tab_manager.get()
+        
+        if tab_name:
+            self.tab_manager.delete(tab_name)
+            
+            if tab_name in self.opened_files:
+                del self.opened_files[tab_name]
+
+        if hasattr(self, "file_menu") and self.file_menu.winfo_exists():
+            self.file_menu.destroy()
+        
+        if tab_name in self.editors:
+            del self.editors[tab_name]
+    
+    # EN main_window.py
+    def _on_save_file(self):
+        tab_name = self.tab_manager.get() # Nombre de la pestaña actual
+        if not tab_name or tab_name not in self.editors:
+            return
+
+        # 1. Obtener la ruta (si es nueva, preguntar)
+        file_path = self.opened_files.get(tab_name)
+        
+        if not file_path: # Es un archivo "Untitled"
+            file_path = filedialog.asksaveasfilename(
+                initialfile=tab_name,
+                defaultextension=".txt",
+                filetypes=[("Archivos de texto", "*.txt"), ("Todos", "*.*")]
+            )
+            if not file_path: return # El usuario canceló
+            
+        # 2. Obtener el texto del editor correspondiente a esa pestaña
+        editor_widget = self.editors[tab_name].text
+        content = editor_widget.get("1.0", tk.END)
+
+        # 3. Escribir al disco
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            self.opened_files[tab_name] = file_path # Actualizar registro
+            print(f"Guardado exitoso: {file_path}")
+        except Exception as e:
+            print(f"Error al guardar: {e}")
+
+        if hasattr(self, "file_menu") and self.file_menu.winfo_exists():
+            self.file_menu.destroy()
 
     def _setup_window(self):
         self.root.geometry("800x600")
@@ -92,6 +204,11 @@ class MainWindow:
             btn.bind("<Enter>", lambda e, w=btn: w.configure(fg_color=self.colors["hover"], text_color="#ffffff"))
             btn.bind("<Leave>", lambda e, w=btn: w.configure(fg_color="transparent", text_color=self.colors["menu_fg"]))
 
+            # Se utiliza una funcion lambda para que al hacer click en "File" se abra el dialogo de archivos
+            if m == "File":
+                self.btn_file = btn  # Guardamos referencia para posicionar el menú
+                btn.bind("<Button-1>", lambda e, menu=m: self._show_file_menu())
+
         # Controles ventana
         control_frame = ctk.CTkFrame(self.title_bar, fg_color="transparent", corner_radius=0)
         control_frame.pack(side=tk.RIGHT)
@@ -153,37 +270,115 @@ class MainWindow:
         self.editor_frame = ctk.CTkFrame(self.body_frame, fg_color=self.colors["bg"], corner_radius=0)
         self.editor_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        from app.gui.components import CodeEditorFrame
-        self._code_editor_frame = CodeEditorFrame(self.editor_frame, self.colors)
-        self._code_editor_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        self.text_editor = self._code_editor_frame.text
-        
-        sample_code = (
-            "# Archivo principal\n"
-            "def mi_funcion():\n"
-            "    saludo = \"Hola mundo\"\n"
-            "    print(saludo)\n"
-            "    return True\n"
-        )
-        self.text_editor.insert(tk.END, sample_code)
-        
-        # Tema demo (Visual solamente para cumplir requerimiento)
-        self.text_editor.tag_configure("comment", foreground=self.colors["comments"])
-        self.text_editor.tag_configure("string", foreground=self.colors["strings"])
-        self.text_editor.tag_configure("keyword", foreground=self.colors["keywords"])
-        self.text_editor.tag_configure("function", foreground=self.colors["functions"])
-        self.text_editor.tag_configure("variable", foreground=self.colors["variables"])
+        # Implementacion de Tabview para sistema de ventanas
+        # anchor="nw" para alinear a la izquierda y evitar centrado
+        self.tab_manager = ctk.CTkTabview(self.editor_frame, corner_radius=0, anchor="nw")
+        self.tab_manager.pack(fill=tk.BOTH, expand=True)
 
-        self.text_editor.tag_add("comment", "1.0", "1.19")
-        self.text_editor.tag_add("keyword", "2.0", "2.3")
-        self.text_editor.tag_add("keyword", "5.4", "5.10")
-        self.text_editor.tag_add("function", "2.4", "2.14")
-        self.text_editor.tag_add("function", "4.4", "4.9")
-        self.text_editor.tag_add("variable", "3.4", "3.10")
-        self.text_editor.tag_add("variable", "4.10", "4.16")
-        self.text_editor.tag_add("string", "3.13", "3.25")
+        # Creacion de pestaña inicial por defecto
+        sample_code = "# Archivo de bienvenida\ndef hello():\n    print('Chimera IDE')\n"
+        self._add_new_tab("Welcome.txt", sample_code)
         
-        self.text_editor.focus_set()
+        # from app.gui.components import CodeEditorFrame
+        # self._code_editor_frame = CodeEditorFrame(self.editor_frame, self.colors)
+        # self._code_editor_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # self.text_editor = self._code_editor_frame.text
+        
+        # sample_code = (
+        #     "# Archivo principal\n"
+        #     "def mi_funcion():\n"
+        #     "    saludo = \"Hola mundo\"\n"
+        #     "    print(saludo)\n"
+        #     "    return True\n"
+        # )
+        # self.text_editor.insert(tk.END, sample_code)
+        
+        # # Tema demo (Visual solamente para cumplir requerimiento)
+        # self.text_editor.tag_configure("comment", foreground=self.colors["comments"])
+        # self.text_editor.tag_configure("string", foreground=self.colors["strings"])
+        # self.text_editor.tag_configure("keyword", foreground=self.colors["keywords"])
+        # self.text_editor.tag_configure("function", foreground=self.colors["functions"])
+        # self.text_editor.tag_configure("variable", foreground=self.colors["variables"])
+
+        # self.text_editor.tag_add("comment", "1.0", "1.19")
+        # self.text_editor.tag_add("keyword", "2.0", "2.3")
+        # self.text_editor.tag_add("keyword", "5.4", "5.10")
+        # self.text_editor.tag_add("function", "2.4", "2.14")
+        # self.text_editor.tag_add("function", "4.4", "4.9")
+        # self.text_editor.tag_add("variable", "3.4", "3.10")
+        # self.text_editor.tag_add("variable", "4.10", "4.16")
+        # self.text_editor.tag_add("string", "3.13", "3.25")
+        
+        # self.text_editor.focus_set()
+
+    def _add_new_tab(self, name, content=""):
+        # añadir la pestaña al gestor
+        self.tab_manager.add(name)
+
+        # obtener el frame de la pestaña recién creada
+        tab_frame = self.tab_manager.tab(name)
+
+        # Se mete el editor de código dentro de la pestaña
+        from app.gui.components import CodeEditorFrame
+        editor = CodeEditorFrame(tab_frame, self.colors)
+        editor.pack(fill=tk.BOTH, expand=True)
+
+        # Insertar el contenido inicial
+        editor.text.insert("1.0", content)
+        self.editors[name] = editor  # Guardamos referencia al editor de esta pestaña
+        editor._on_change()  # Forzar actualización de números de línea
+        self.tab_manager.set(name)  # Cambiar a la pestaña recién creada
+
+    def _show_file_menu(self):
+        # SEGURIDAD: Si el menú ya existe, lo cerramos antes de crear otro
+        if hasattr(self, "file_menu") and self.file_menu.winfo_exists():
+            self.file_menu.destroy()
+            return # Si haces clic de nuevo, simplemente se cierra
+
+        self.file_menu = ctk.CTkToplevel(self.root)
+        self.file_menu.overrideredirect(True)
+        self.file_menu.configure(fg_color=self.colors["title_bg"])
+        
+        # Forzar que el menú esté por encima de todo
+        self.file_menu.attributes("-topmost", True)
+
+        options = [
+            ("New File", self._on_new_file),
+            ("Open File...", self._on_open_file),
+            ("Close File", self._on_close_file),
+            ("Save", lambda: self._on_save_file()) 
+        ]
+
+        for text, command in options:
+            btn = ctk.CTkButton(
+                self.file_menu, text=text, command=command,
+                fg_color="transparent", anchor="w", corner_radius=0,
+                hover_color=self.colors["hover"]
+            )
+            btn.pack(fill="x", padx=2, pady=2)
+
+        # Reposicionamiento inicial
+        x = self.btn_file.winfo_rootx()
+        y = self.btn_file.winfo_rooty() + self.btn_file.winfo_height()
+        self.file_menu.geometry(f"+{x}+{y}")
+
+        # Cerrar si se pierde el foco
+        self.file_menu.bind("<FocusOut>", lambda e: self.file_menu.destroy())
+
+        # Creamos una función interna para reposicionar
+        def reposition(event=None):
+            if hasattr(self, "file_menu") and self.file_menu.winfo_exists():
+                # Calculamos la nueva posición base del botón "File"
+                # Necesitamos obtener la referencia al botón que disparó el menú
+                x = self.btn_file.winfo_rootx()
+                y = self.btn_file.winfo_rooty() + self.btn_file.winfo_height()
+                self.file_menu.geometry(f"+{x}+{y}")
+
+        # Vinculamos el movimiento de la ventana principal al reposicionamiento
+        self.root.bind("<Configure>", reposition)
+        
+        # Es vital limpiar este vínculo cuando el menú se cierre
+        self.file_menu.bind("<Destroy>", lambda e: self.root.unbind("<Configure>"))
 
     # -----------------------------------------------------------------
     # LÓGICA DE VENTANA (Mover, redimensionar, maximizar, minimizar)
@@ -277,9 +472,10 @@ class MainWindow:
             self.root.geometry(f"+{deltax}+{deltay}")
 
     def _minimize_window(self):
-        self.root.overrideredirect(False)
-        self.root.iconify()
-        self.root.bind("<Map>", self._restore_window_state)
+        self.root.withdraw() # Ocultar completamente primero
+        self.root.overrideredirect(False) # Devolver control al SO
+        self.root.iconify() # Minimizar
+        self.root.bind("<Map>", self._restore_window_state) # Detectar cuando regresa
 
     def _restore_window_state(self, event):
         self.root.overrideredirect(True)

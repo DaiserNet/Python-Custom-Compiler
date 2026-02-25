@@ -61,38 +61,57 @@ class LineNumberCanvas(tk.Canvas):
 # Actualizamos a CTkFrame
 class CodeEditorFrame(ctk.CTkFrame):
     def __init__(self, parent, colors, *args, **kwargs):
-        # CTkFrame usa fg_color
         super().__init__(parent, fg_color=colors["bg"], corner_radius=0, *args, **kwargs)
         self.colors = colors
 
-        self.linenumbers = LineNumberCanvas(self, None, colors, width=40)
+        # 1. Creamos la Scrollbar Horizontal primero y la ponemos abajo
+        # Usamos un comando temporal, lo actualizaremos cuando creemos el texto
+        self.h_scrollbar = ctk.CTkScrollbar(self, orientation="horizontal")
+        self.h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # 2. Creamos un "Contenedor Principal" para lo que va arriba de la scrollbar horizontal
+        self.text_area_container = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
+        self.text_area_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        # 3. Dentro del contenedor principal, la Scrollbar Vertical a la derecha
+        self.scrollbar = ctk.CTkScrollbar(self.text_area_container, orientation="vertical")
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 4. Los números de línea a la izquierda
+        self.linenumbers = LineNumberCanvas(self.text_area_container, None, colors, width=40)
         self.linenumbers.pack(side=tk.LEFT, fill=tk.Y)
 
+        # 5. El texto ocupa el resto del espacio en el centro
         self.text = CustomText(
-            self,
+            self.text_area_container,
             bg=self.colors["bg"], 
             fg=self.colors["variables"], 
             insertbackground=self.colors["fg"], 
-            wrap=tk.WORD, 
+            wrap=tk.NONE, # Sin ajuste de línea
             font=("Consolas", 12),
             bd=0,
             highlightthickness=0
         )
         self.text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
         self.linenumbers.text_widget = self.text
 
-        # Reemplazamos tk.Scrollbar por el moderno CTkScrollbar
-        self.scrollbar = ctk.CTkScrollbar(self, orientation="vertical", command=self.text.yview)
-        
+        # 6. CONECTAMOS TODO (Ahora que self.text ya existe)
         def _on_yscroll(*args):
             self.scrollbar.set(*args)
             self._on_change()
             
-        self.text.configure(yscrollcommand=_on_yscroll)
-        # Puedes empaquetar la scrollbar ahora, se verá genial con el estilo oscuro
-        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y) 
+        def _on_xscroll(*args):
+            self.h_scrollbar.set(*args)
+            self._on_change()
 
+        # Le decimos al texto cómo actualizar las barras
+        self.text.configure(yscrollcommand=_on_yscroll, xscrollcommand=_on_xscroll)
+        
+        # Le decimos a las barras cómo mover el texto
+        self.scrollbar.configure(command=self.text.yview)
+        self.h_scrollbar.configure(command=self.text.xview)
+
+        # 7. Eventos
         self.text.bind("<<Change>>", self._on_change)
         self.text.bind("<Configure>", self._on_change)
         self.text.bind("<KeyRelease>", self._on_change)
@@ -100,4 +119,5 @@ class CodeEditorFrame(ctk.CTkFrame):
         self.text.bind("<MouseWheel>", self._on_change)
 
     def _on_change(self, event=None):
+        self.text.update_idletasks()
         self.linenumbers.redraw()
