@@ -272,9 +272,25 @@ class MainWindow:
 
         # Implementacion de Tabview para sistema de ventanas
         # anchor="nw" para alinear a la izquierda y evitar centrado
-        self.tab_manager = ctk.CTkTabview(self.editor_frame, corner_radius=0, anchor="nw")
+        # self.tab_manager = ctk.CTkTabview(self.editor_frame, corner_radius=0, anchor="nw")
+        self.tab_manager = ctk.CTkTabview(
+            self.editor_frame, 
+            corner_radius=0, 
+            anchor="nw",
+            fg_color=self.colors["bg"],           # Fondo del contenido
+            segmented_button_fg_color="#1e1e1e",  # Fondo de la barra de pestañas
+            segmented_button_selected_color=self.colors["bg"], # Color pestaña activa
+            segmented_button_selected_hover_color=self.colors["hover"],
+            segmented_button_unselected_color="#1e1e1e",
+            segmented_button_unselected_hover_color=self.colors["hover"],
+            text_color="#f8f8f2"                  # Texto Dracula (blanco hueso)
+        )
         self.tab_manager.pack(fill=tk.BOTH, expand=True)
 
+        self.tab_manager._segmented_button.configure(
+            selected_color="#bd93f9", # Morado Dracula para la pestaña activa
+            unselected_color="#1e1e1e"
+        )
         # Creacion de pestaña inicial por defecto
         sample_code = "# Archivo de bienvenida\ndef hello():\n    print('Chimera IDE')\n"
         self._add_new_tab("Welcome.txt", sample_code)
