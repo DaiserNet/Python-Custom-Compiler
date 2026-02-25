@@ -1,7 +1,8 @@
 import tkinter as tk
+import customtkinter as ctk
 
 class MainWindow:
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: ctk.CTk):
         self.root = root
         self._setup_window()
         self._setup_colors()
@@ -65,14 +66,14 @@ class MainWindow:
         }
 
     def _create_widgets(self):
-        self.main_container = tk.Frame(self.root, bg="#1e1e1e", highlightthickness=1, highlightbackground="#000000")
+        self.main_container = ctk.CTkFrame(self.root, fg_color="#1e1e1e", border_width=1, border_color="#000000", corner_radius=0)
         self.main_container.pack(fill=tk.BOTH, expand=True)
 
         self._create_title_bar()
         self._create_body()
 
     def _create_title_bar(self):
-        self.title_bar = tk.Frame(self.main_container, bg=self.colors["title_bg"], height=30)
+        self.title_bar = ctk.CTkFrame(self.main_container, fg_color=self.colors["title_bg"], height=30, corner_radius=0)
         self.title_bar.pack(fill=tk.X, side=tk.TOP)
         self.title_bar.pack_propagate(False)
 
@@ -81,77 +82,75 @@ class MainWindow:
         self.title_bar.bind("<B1-Motion>", self._do_move)
 
         # Menús
-        menu_frame = tk.Frame(self.title_bar, bg=self.colors["title_bg"])
+        menu_frame = ctk.CTkFrame(self.title_bar, fg_color="transparent", corner_radius=0)
         menu_frame.pack(side=tk.LEFT, padx=5)
 
         menus = ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"]
         for m in menus:
-            btn = tk.Label(menu_frame, text=m, bg=self.colors["title_bg"], fg=self.colors["menu_fg"], font=("Segoe UI", 9))
+            btn = ctk.CTkLabel(menu_frame, text=m, fg_color="transparent", text_color=self.colors["menu_fg"], font=("Segoe UI", 12))
             btn.pack(side=tk.LEFT, padx=5)
-            btn.bind("<Enter>", lambda e, w=btn: w.config(bg=self.colors["hover"], fg="#ffffff"))
-            btn.bind("<Leave>", lambda e, w=btn: w.config(bg=self.colors["title_bg"], fg=self.colors["menu_fg"]))
+            btn.bind("<Enter>", lambda e, w=btn: w.configure(fg_color=self.colors["hover"], text_color="#ffffff"))
+            btn.bind("<Leave>", lambda e, w=btn: w.configure(fg_color="transparent", text_color=self.colors["menu_fg"]))
 
         # Controles ventana
-        control_frame = tk.Frame(self.title_bar, bg=self.colors["title_bg"])
+        control_frame = ctk.CTkFrame(self.title_bar, fg_color="transparent", corner_radius=0)
         control_frame.pack(side=tk.RIGHT)
 
-        btn_minimize = tk.Button(control_frame, text="—", bg=self.colors["title_bg"], fg=self.colors["menu_fg"], 
-                                 bd=0, font=("Consolas", 10), width=4, relief=tk.FLAT, command=self._minimize_window)
+        btn_minimize = ctk.CTkButton(control_frame, text="—", fg_color="transparent", text_color=self.colors["menu_fg"], 
+                                     hover_color=self.colors["hover"], font=("Consolas", 14), width=40, height=30, 
+                                     corner_radius=0, command=self._minimize_window)
         btn_minimize.pack(side=tk.LEFT)
         
-        self.btn_maximize = tk.Button(control_frame, text="□", bg=self.colors["title_bg"], fg=self.colors["menu_fg"], 
-                                 bd=0, font=("Consolas", 10), width=4, relief=tk.FLAT, command=self._maximize_window)
+        self.btn_maximize = ctk.CTkButton(control_frame, text="□", fg_color="transparent", text_color=self.colors["menu_fg"], 
+                                          hover_color=self.colors["hover"], font=("Consolas", 14), width=40, height=30, 
+                                          corner_radius=0, command=self._maximize_window)
         self.btn_maximize.pack(side=tk.LEFT)
         
-        btn_close = tk.Button(control_frame, text="✕", bg=self.colors["title_bg"], fg=self.colors["menu_fg"], 
-                              bd=0, font=("Consolas", 10), width=4, relief=tk.FLAT, command=self.root.destroy)
+        btn_close = ctk.CTkButton(control_frame, text="✕", fg_color="transparent", text_color=self.colors["menu_fg"], 
+                                  hover_color="#e81123", font=("Consolas", 14), width=40, height=30, 
+                                  corner_radius=0, command=self.root.destroy)
         btn_close.pack(side=tk.LEFT)
 
-        btn_minimize.bind("<Enter>", lambda e: btn_minimize.config(bg=self.colors["hover"]))
-        btn_minimize.bind("<Leave>", lambda e: btn_minimize.config(bg=self.colors["title_bg"]))
-        self.btn_maximize.bind("<Enter>", lambda e: self.btn_maximize.config(bg=self.colors["hover"]))
-        self.btn_maximize.bind("<Leave>", lambda e: self.btn_maximize.config(bg=self.colors["title_bg"]))
-        btn_close.bind("<Enter>", lambda e: btn_close.config(bg="#e81123", fg="#ffffff"))
-        btn_close.bind("<Leave>", lambda e: btn_close.config(bg=self.colors["title_bg"], fg=self.colors["menu_fg"]))
-
     def _create_body(self):
-        self.body_frame = tk.Frame(self.main_container, bg=self.colors["bg"])
+        self.body_frame = ctk.CTkFrame(self.main_container, fg_color=self.colors["bg"], corner_radius=0)
         self.body_frame.pack(fill=tk.BOTH, expand=True)
 
         self._create_activity_bar()
         self._create_editor()
 
     def _create_activity_bar(self):
-        self.activity_bar = tk.Frame(self.body_frame, bg=self.colors["activity_bg"], width=50)
+        self.activity_bar = ctk.CTkFrame(self.body_frame, fg_color=self.colors["activity_bg"], width=50, corner_radius=0)
         self.activity_bar.pack(side=tk.LEFT, fill=tk.Y)
         self.activity_bar.pack_propagate(False)
 
         activities = [("Explorer", "E"), ("Code Search", "S"), ("Run and Debug", "D")]
         for fullname, shortname in activities:
-            btn = tk.Label(self.activity_bar, text=shortname, bg=self.colors["activity_bg"], fg=self.colors["menu_fg"], 
-                           font=("Segoe UI", 12, "bold"), pady=15)
+            btn = ctk.CTkLabel(self.activity_bar, text=shortname, fg_color="transparent", text_color=self.colors["menu_fg"], 
+                               font=("Segoe UI", 16, "bold"), pady=15)
             btn.pack(side=tk.TOP, fill=tk.X)
             btn.bind("<Enter>", lambda e, w=btn, txt=fullname: self._show_tooltip(w, txt))
             btn.bind("<Leave>", lambda e, w=btn: self._hide_tooltip(w))
 
     def _show_tooltip(self, widget, text):
-        widget.config(fg="#ffffff")
+        widget.configure(text_color="#ffffff")
         x = widget.winfo_rootx() + 55
         y = widget.winfo_rooty() + 10
         self.tooltip = tk.Toplevel(widget)
         self.tooltip.wm_overrideredirect(True)
         self.tooltip.wm_geometry(f"+{x}+{y}")
-        label = tk.Label(self.tooltip, text=text, bg="#2d2d30", fg="#cccccc", borderwidth=1, relief="solid", font=("Segoe UI", 9))
-        label.pack()
+        
+        label = ctk.CTkLabel(self.tooltip, text=text, fg_color="#2d2d30", text_color="#cccccc", 
+                             font=("Segoe UI", 12), corner_radius=4)
+        label.pack(padx=2, pady=2)
 
     def _hide_tooltip(self, widget):
-        widget.config(fg=self.colors["menu_fg"])
+        widget.configure(text_color=self.colors["menu_fg"])
         if hasattr(self, "tooltip") and self.tooltip:
             self.tooltip.destroy()
             self.tooltip = None
 
     def _create_editor(self):
-        self.editor_frame = tk.Frame(self.body_frame, bg=self.colors["bg"])
+        self.editor_frame = ctk.CTkFrame(self.body_frame, fg_color=self.colors["bg"], corner_radius=0)
         self.editor_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         from app.gui.components import CodeEditorFrame
@@ -186,6 +185,10 @@ class MainWindow:
         
         self.text_editor.focus_set()
 
+    # -----------------------------------------------------------------
+    # LÓGICA DE VENTANA (Mover, redimensionar, maximizar, minimizar)
+    # -----------------------------------------------------------------
+
     def _check_resize_hover(self, event):
         if self._is_maximized or self._resize_edge:
             return
@@ -210,10 +213,10 @@ class MainWindow:
         elif edge in ("top", "bottom"): cursor = "sb_v_double_arrow"
 
         if cursor:
-            self.root.config(cursor=cursor)
+            self.root.configure(cursor=cursor)
             self._hover_edge = edge
         else:
-            self.root.config(cursor="")
+            self.root.configure(cursor="")
             self._hover_edge = None
 
     def _start_resize(self, event):
@@ -286,7 +289,6 @@ class MainWindow:
     def _get_work_area(self):
         import ctypes
         import struct
-        # SPI_GETWORKAREA = 48
         rect = ctypes.create_string_buffer(16)
         ctypes.windll.user32.SystemParametersInfoA(48, 0, rect, 0)
         left, top, right, bottom = struct.unpack("llll", rect.raw)
@@ -294,25 +296,22 @@ class MainWindow:
 
     def _maximize_window(self):
         if not self._is_maximized:
-            # Guardamos la geometría actual antes de maximizar
             self._normal_geometry = self.root.geometry()
             
             try:
-                # Obtener el área de trabajo (excluyendo barra de tareas)
+                scaling = ctk.get_window_scaling(self.root)
                 left, top, right, bottom = self._get_work_area()
-                width = right - left
-                height = bottom - top
+                width = int((right - left) / scaling)
+                height = int((bottom - top) / scaling)
                 self.root.geometry(f"{width}x{height}+{left}+{top}")
             except Exception:
-                # Fallback si falla ctypes
                 w = self.root.winfo_screenwidth()
                 h = self.root.winfo_screenheight()
                 self.root.geometry(f"{w}x{h}+0+0")
                 
-            self.btn_maximize.config(text="❐") # Símbolo de restaurar
+            self.btn_maximize.configure(text="❐") # Actualizado a .configure() para CTk
             self._is_maximized = True
         else:
-            # Restauramos
             self.root.geometry(self._normal_geometry)
-            self.btn_maximize.config(text="□") # Símbolo de maximizar
+            self.btn_maximize.configure(text="□") # Actualizado a .configure() para CTk
             self._is_maximized = False
