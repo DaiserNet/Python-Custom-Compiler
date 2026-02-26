@@ -3,6 +3,123 @@ from tkinter import filedialog # Ventana estándar para elegir archivos
 import customtkinter as ctk
 import os
 
+class CustomTabView(ctk.CTkFrame):
+    def __init__(self, parent, colors, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.colors = colors
+
+        # Barra de pestañas
+        self.tab_bar = ctk.CTkFrame(
+            self, height=30, fg_color=self.colors["title_bg"], corner_radius=0
+        )
+        self.tab_bar.pack(side=tk.TOP, fill=tk.X)
+        self.tab_bar.pack_propagate(False)
+
+        # Área de contenido
+        self.content_area = ctk.CTkFrame(
+            self, fg_color=self.colors["bg"], corner_radius=0
+        )
+        self.content_area.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.tabs = {}          # nombre -> (frame_boton, frame_contenido)
+        self.current_tab = None
+        self.close_callback = None
+
+    def set_close_callback(self, callback):
+        """Define la función que se llamará al pulsar la X de una pestaña."""
+        self.close_callback = callback
+
+    def add(self, name):
+        """Añade una nueva pestaña con el nombre dado."""
+        # Marco de contenido (donde irá el editor)
+        content = ctk.CTkFrame(self.content_area, fg_color=self.colors["bg"], corner_radius=0)
+        # No lo empaquetamos aún; se mostrará cuando se active la pestaña
+
+        # Marco del botón de pestaña
+        btn_frame = ctk.CTkFrame(self.tab_bar, fg_color="transparent", corner_radius=0)
+        btn_frame.pack(side=tk.LEFT, fill=tk.Y)
+
+        # Etiqueta con el nombre (click para activar)
+        label = ctk.CTkLabel(
+            btn_frame, text=name, fg_color="transparent",
+            text_color=self.colors["fg"], font=("Segoe UI", 12), padx=10
+        )
+        label.pack(side=tk.LEFT, fill=tk.Y)
+        label.bind("<Button-1>", lambda e, n=name: self.set(n))
+
+        # Botón de cierre (X)
+        close_btn = ctk.CTkButton(
+            btn_frame, text="✕", width=20, height=20,
+            fg_color="transparent", hover_color="#e81123",
+            text_color=self.colors["fg"], font=("Segoe UI", 10),
+            command=lambda n=name: self._close_tab(n)
+        )
+        close_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.tabs[name] = (btn_frame, content)
+
+        # Si es la primera pestaña, activarla
+        if len(self.tabs) == 1:
+            self.set(name)
+
+    def get(self):
+        """Devuelve el nombre de la pestaña activa."""
+        return self.current_tab
+
+    def set(self, name):
+        """Activa la pestaña indicada."""
+        if name not in self.tabs:
+            return
+
+        # Ocultar contenido actual
+        if self.current_tab and self.current_tab in self.tabs:
+            old_content = self.tabs[self.current_tab][1]
+            old_content.pack_forget()
+            # Restaurar estilo de botón no seleccionado
+            self._set_tab_style(self.current_tab, selected=False)
+
+        # Mostrar nuevo contenido
+        new_content = self.tabs[name][1]
+        new_content.pack(fill=tk.BOTH, expand=True)
+        self.current_tab = name
+        self._set_tab_style(name, selected=True)
+
+    def delete(self, name):
+        """Elimina la pestaña y su contenido."""
+        if name not in self.tabs:
+            return
+
+        btn_frame, content = self.tabs.pop(name)
+        btn_frame.destroy()
+        content.destroy()
+
+        # Si era la pestaña activa, cambiar a otra
+        if self.current_tab == name:
+            if self.tabs:
+                new_tab = next(iter(self.tabs.keys()))
+                self.set(new_tab)
+            else:
+                self.current_tab = None
+
+    def tab(self, name):
+        """Devuelve el frame de contenido de la pestaña indicada."""
+        return self.tabs.get(name, (None, None))[1]
+
+    def _close_tab(self, name):
+        """Llamado al pulsar la X. Notifica al callback si existe."""
+        if self.close_callback:
+            self.close_callback(name)
+        else:
+            self.delete(name)
+
+    def _set_tab_style(self, name, selected):
+        """Cambia el color de fondo del botón de pestaña según su estado."""
+        if name not in self.tabs:
+            return
+        btn_frame, _ = self.tabs[name]
+        color = self.colors["bg"] if selected else self.colors["title_bg"]
+        btn_frame.configure(fg_color=color)
+
 class MainWindow:
     def __init__(self, root: ctk.CTk):
         self.root = root
@@ -17,6 +134,19 @@ class MainWindow:
         self._setup_colors()
         self._create_widgets()
     
+    
+    def _on_tab_close(self, tab_name):
+        """Callback ejecutado cuando se pulsa la X en una pestaña."""
+        if tab_name:
+            # Eliminar del gestor de pestañas (esto destruye el contenido)
+            self.tab_manager.delete(tab_name)
+
+            # Limpiar registros
+            if tab_name in self.opened_files:
+                del self.opened_files[tab_name]
+            if tab_name in self.editors:
+                del self.editors[tab_name]
+
     # Función para abrir archivos, con manejo de múltiples pestañas y prevención de duplicados
     def open_file(self):
         # Seleccion de archivos
@@ -76,10 +206,7 @@ class MainWindow:
         tab_name = self.tab_manager.get()
         
         if tab_name:
-            self.tab_manager.delete(tab_name)
-            
-            if tab_name in self.opened_files:
-                del self.opened_files[tab_name]
+            self._on_tab_close(tab_name) # Esto se encargará de eliminar la pestaña y limpiar registros
 
         if hasattr(self, "file_menu") and self.file_menu.winfo_exists():
             self.file_menu.destroy()
@@ -270,62 +397,43 @@ class MainWindow:
         self.editor_frame = ctk.CTkFrame(self.body_frame, fg_color=self.colors["bg"], corner_radius=0)
         self.editor_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Implementacion de Tabview para sistema de ventanas
-        # anchor="nw" para alinear a la izquierda y evitar centrado
-        # self.tab_manager = ctk.CTkTabview(self.editor_frame, corner_radius=0, anchor="nw")
-        self.tab_manager = ctk.CTkTabview(
-            self.editor_frame, 
-            corner_radius=0, 
-            anchor="nw",
-            fg_color=self.colors["bg"],           # Fondo del contenido
-            segmented_button_fg_color="#1e1e1e",  # Fondo de la barra de pestañas
-            segmented_button_selected_color=self.colors["bg"], # Color pestaña activa
-            segmented_button_selected_hover_color=self.colors["hover"],
-            segmented_button_unselected_color="#1e1e1e",
-            segmented_button_unselected_hover_color=self.colors["hover"],
-            text_color="#f8f8f2"                  # Texto Dracula (blanco hueso)
-        )
+        # Usar nuestro CustomTabView
+        self.tab_manager = CustomTabView(self.editor_frame, colors=self.colors)
         self.tab_manager.pack(fill=tk.BOTH, expand=True)
+        self.tab_manager.set_close_callback(self._on_tab_close)
 
-        self.tab_manager._segmented_button.configure(
-            selected_color="#bd93f9", # Morado Dracula para la pestaña activa
-            unselected_color="#1e1e1e"
+        # Código de ejemplo
+        sample_code = (
+            "# Archivo principal\n"
+            "def mi_funcion():\n"
+            "    saludo = \"Hola mundo\"\n"
+            "    print(saludo)\n"
+            "    return True\n"
         )
-        # Creacion de pestaña inicial por defecto
-        sample_code = "# Archivo de bienvenida\ndef hello():\n    print('Chimera IDE')\n"
-        self._add_new_tab("Welcome.txt", sample_code)
-        
-        # from app.gui.components import CodeEditorFrame
-        # self._code_editor_frame = CodeEditorFrame(self.editor_frame, self.colors)
-        # self._code_editor_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        # self.text_editor = self._code_editor_frame.text
-        
-        # sample_code = (
-        #     "# Archivo principal\n"
-        #     "def mi_funcion():\n"
-        #     "    saludo = \"Hola mundo\"\n"
-        #     "    print(saludo)\n"
-        #     "    return True\n"
-        # )
-        # self.text_editor.insert(tk.END, sample_code)
-        
-        # # Tema demo (Visual solamente para cumplir requerimiento)
-        # self.text_editor.tag_configure("comment", foreground=self.colors["comments"])
-        # self.text_editor.tag_configure("string", foreground=self.colors["strings"])
-        # self.text_editor.tag_configure("keyword", foreground=self.colors["keywords"])
-        # self.text_editor.tag_configure("function", foreground=self.colors["functions"])
-        # self.text_editor.tag_configure("variable", foreground=self.colors["variables"])
 
-        # self.text_editor.tag_add("comment", "1.0", "1.19")
-        # self.text_editor.tag_add("keyword", "2.0", "2.3")
-        # self.text_editor.tag_add("keyword", "5.4", "5.10")
-        # self.text_editor.tag_add("function", "2.4", "2.14")
-        # self.text_editor.tag_add("function", "4.4", "4.9")
-        # self.text_editor.tag_add("variable", "3.4", "3.10")
-        # self.text_editor.tag_add("variable", "4.10", "4.16")
-        # self.text_editor.tag_add("string", "3.13", "3.25")
-        
-        # self.text_editor.focus_set()
+        # Crear la pestaña inicial con el código de ejemplo
+        self._add_new_tab("Welcome.txt", sample_code)
+
+        # Obtener el editor de la pestaña recién creada
+        editor = self.editors["Welcome.txt"]
+        text_widget = editor.text
+
+        # Configurar los tags de color (según el tema Dracula)
+        text_widget.tag_configure("comment", foreground=self.colors["comments"])
+        text_widget.tag_configure("string", foreground=self.colors["strings"])
+        text_widget.tag_configure("keyword", foreground=self.colors["keywords"])
+        text_widget.tag_configure("function", foreground=self.colors["functions"])
+        text_widget.tag_configure("variable", foreground=self.colors["variables"])
+
+        # Aplicar los tags a las posiciones específicas del ejemplo
+        text_widget.tag_add("comment", "1.0", "1.19")      # "# Archivo principal"
+        text_widget.tag_add("keyword", "2.0", "2.3")       # "def"
+        text_widget.tag_add("function", "2.4", "2.14")     # "mi_funcion"
+        text_widget.tag_add("variable", "3.4", "3.10")     # "saludo"
+        text_widget.tag_add("string", "3.13", "3.25")      # "Hola mundo"
+        text_widget.tag_add("keyword", "5.4", "5.10")      # "return" (en línea 5, columnas 4-10)
+        text_widget.tag_add("variable", "4.10", "4.16")    # "saludo" en la línea del print
+        # Ajusta las coordenadas si el código cambia
 
     def _add_new_tab(self, name, content=""):
         # añadir la pestaña al gestor
@@ -527,3 +635,4 @@ class MainWindow:
             self.root.geometry(self._normal_geometry)
             self.btn_maximize.configure(text="□") # Actualizado a .configure() para CTk
             self._is_maximized = False
+    
