@@ -367,16 +367,25 @@ class MainWindow:
         self.activity_bar.pack(side=tk.LEFT, fill=tk.Y)
         self.activity_bar.pack_propagate(False)
 
-        activities = [("Explorer", "E"), ("Code Search", "S"), ("Run and Debug", "D")]
-        for fullname, shortname in activities:
-            btn = ctk.CTkLabel(self.activity_bar, text=shortname, fg_color="transparent", text_color=self.colors["menu_fg"], 
-                               font=("Segoe UI", 16, "bold"), pady=15)
+        # Iconos de la fuente Segoe MDL2 Assets (incluida en Windows 10/11)
+        # \uE8B7 = FileExplorer, \uE721 = Search, \uEBE8 = Play+Bug
+        activities = [
+            ("Explorer", "\uE8B7"),
+            ("Code Search", "\uE721"),
+            ("Run and Debug", "\uE768"),
+        ]
+        for fullname, icon_char in activities:
+            btn = ctk.CTkLabel(
+                self.activity_bar, text=icon_char, fg_color="transparent",
+                text_color=self.colors["menu_fg"],
+                font=("Segoe MDL2 Assets", 22), width=50, height=50,
+            )
             btn.pack(side=tk.TOP, fill=tk.X)
             btn.bind("<Enter>", lambda e, w=btn, txt=fullname: self._show_tooltip(w, txt))
             btn.bind("<Leave>", lambda e, w=btn: self._hide_tooltip(w))
 
     def _show_tooltip(self, widget, text):
-        widget.configure(text_color="#ffffff")
+        widget.configure(fg_color=self.colors["hover"], text_color="#ffffff")
         x = widget.winfo_rootx() + 55
         y = widget.winfo_rooty() + 10
         self.tooltip = tk.Toplevel(widget)
@@ -388,7 +397,7 @@ class MainWindow:
         label.pack(padx=2, pady=2)
 
     def _hide_tooltip(self, widget):
-        widget.configure(text_color=self.colors["menu_fg"])
+        widget.configure(fg_color="transparent", text_color=self.colors["menu_fg"])
         if hasattr(self, "tooltip") and self.tooltip:
             self.tooltip.destroy()
             self.tooltip = None
