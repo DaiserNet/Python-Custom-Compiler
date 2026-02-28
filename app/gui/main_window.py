@@ -360,7 +360,17 @@ class MainWindow:
         self.body_frame.pack(fill=tk.BOTH, expand=True)
 
         self._create_activity_bar()
+        self._create_explorer_panel()
+        self._create_search_panel()
+        self._create_run_panel()
         self._create_editor()
+        self._create_right_panel()
+
+        # Panel lateral activo por defecto
+        self._active_panel = "explorer"
+        self.search_panel.pack_forget()  # Ocultar search al inicio
+        self.run_panel.pack_forget()     # Ocultar run al inicio
+        self.right_panel.pack_forget()   # Ocultar panel derecho al inicio
 
     def _create_activity_bar(self):
         self.activity_bar = ctk.CTkFrame(self.body_frame, fg_color=self.colors["activity_bg"], width=50, corner_radius=0)
@@ -383,6 +393,12 @@ class MainWindow:
             btn.pack(side=tk.TOP, fill=tk.X)
             btn.bind("<Enter>", lambda e, w=btn, txt=fullname: self._show_tooltip(w, txt))
             btn.bind("<Leave>", lambda e, w=btn: self._hide_tooltip(w))
+            if fullname == "Explorer":
+                btn.bind("<Button-1>", lambda e: self._show_side_panel("explorer"))
+            elif fullname == "Code Search":
+                btn.bind("<Button-1>", lambda e: self._show_side_panel("search"))
+            elif fullname == "Run and Debug":
+                btn.bind("<Button-1>", lambda e: self._show_side_panel("run"))
 
     def _show_tooltip(self, widget, text):
         widget.configure(fg_color=self.colors["hover"], text_color="#ffffff")
@@ -410,6 +426,9 @@ class MainWindow:
         self.tab_manager = CustomTabView(self.editor_frame, colors=self.colors)
         self.tab_manager.pack(fill=tk.BOTH, expand=True)
         self.tab_manager.set_close_callback(self._on_tab_close)
+
+        # --- Panel inferior (oculto por defecto) ---
+        self._create_bottom_panel()
 
         # Código de ejemplo
         sample_code = (
@@ -461,6 +480,694 @@ class MainWindow:
         self.editors[name] = editor  # Guardamos referencia al editor de esta pestaña
         editor._on_change()  # Forzar actualización de números de línea
         self.tab_manager.set(name)  # Cambiar a la pestaña recién creada
+
+    # -----------------------------------------------------------------
+    # PANEL INFERIOR (Errores / Resultados)
+    # -----------------------------------------------------------------
+
+    def _create_bottom_panel(self):
+        """Crea el panel inferior con pestañas de errores y resultados."""
+        self._bottom_panel_visible = False
+
+        self.bottom_panel = ctk.CTkFrame(
+            self.editor_frame,
+            fg_color=self.colors["title_bg"],
+            height=200,
+            corner_radius=0,
+            border_width=1,
+            border_color=self.colors["hover"]
+        )
+        # No empaquetar aún (oculto por defecto)
+
+        # --- Barra de pestañas ---
+        tab_bar = ctk.CTkFrame(
+            self.bottom_panel, fg_color=self.colors["title_bg"],
+            height=32, corner_radius=0
+        )
+        tab_bar.pack(fill=tk.X)
+        tab_bar.pack_propagate(False)
+
+        self._bottom_tabs = {}
+        self._bottom_current_tab = None
+        tab_names = ["Error Léxico", "Error Sintáctico", "Error Semántico", "Resultados"]
+
+        for name in tab_names:
+            lbl = ctk.CTkLabel(
+                tab_bar,
+                text=name,
+                fg_color="transparent",
+                text_color=self.colors["comments"],
+                font=("Segoe UI", 12),
+                padx=6,
+                pady=4,
+            )
+            lbl.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 2))
+            lbl.bind("<Button-1>", lambda e, n=name: self._set_bottom_tab(n))
+            lbl.bind("<Enter>", lambda e, w=lbl: w.configure(text_color=self.colors["fg"]))
+            lbl.bind("<Leave>", lambda e, w=lbl, n=name: w.configure(
+                text_color=self.colors["fg"] if n == self._bottom_current_tab else self.colors["comments"]
+            ))
+
+            # Crear frame de contenido para cada pestaña
+            content_frame = ctk.CTkFrame(
+                self.bottom_panel, fg_color=self.colors["bg"], corner_radius=0
+            )
+            self._bottom_tabs[name] = (lbl, content_frame)
+
+        # --- Botones a la derecha: ··· y ✕ (cerrar) ---
+        close_btn = ctk.CTkLabel(
+            tab_bar, text="✕",
+            fg_color="transparent",
+            text_color=self.colors["comments"],
+            font=("Consolas", 13),
+            width=28,
+        )
+        close_btn.pack(side=tk.RIGHT, padx=(0, 6), fill=tk.Y)
+        close_btn.bind("<Button-1>", lambda e: self._toggle_bottom_panel())
+        close_btn.bind("<Enter>", lambda e: close_btn.configure(
+            fg_color="#e81123", text_color=self.colors["fg"]
+        ))
+        close_btn.bind("<Leave>", lambda e: close_btn.configure(
+            fg_color="transparent", text_color=self.colors["comments"]
+        ))
+
+        more_btn = ctk.CTkLabel(
+            tab_bar, text="···",
+            fg_color="transparent",
+            text_color=self.colors["comments"],
+            font=("Consolas", 14, "bold"),
+            width=28,
+        )
+        more_btn.pack(side=tk.RIGHT, padx=2, fill=tk.Y)
+        more_btn.bind("<Enter>", lambda e: more_btn.configure(
+            fg_color=self.colors["hover"], text_color=self.colors["fg"]
+        ))
+        more_btn.bind("<Leave>", lambda e: more_btn.configure(
+            fg_color="transparent", text_color=self.colors["comments"]
+        ))
+
+        # Línea separadora debajo de las pestañas
+        ctk.CTkFrame(
+            self.bottom_panel, fg_color=self.colors["hover"], height=1, corner_radius=0
+        ).pack(fill=tk.X)
+
+        # Activar la primera pestaña
+        self._set_bottom_tab(tab_names[0])
+
+    def _set_bottom_tab(self, name):
+        """Cambia la pestaña activa del panel inferior."""
+        # Desactivar pestaña anterior
+        if self._bottom_current_tab and self._bottom_current_tab in self._bottom_tabs:
+            old_lbl, old_content = self._bottom_tabs[self._bottom_current_tab]
+            old_lbl.configure(text_color=self.colors["comments"])
+            old_content.pack_forget()
+
+        # Activar nueva pestaña
+        if name in self._bottom_tabs:
+            lbl, content = self._bottom_tabs[name]
+            lbl.configure(text_color=self.colors["fg"])
+            content.pack(fill=tk.BOTH, expand=True)
+            self._bottom_current_tab = name
+
+    def _toggle_bottom_panel(self):
+        """Muestra u oculta el panel inferior."""
+        if self._bottom_panel_visible:
+            self.bottom_panel.pack_forget()
+            self._bottom_panel_visible = False
+        else:
+            self.bottom_panel.pack(side=tk.BOTTOM, fill=tk.X)
+            self.bottom_panel.configure(height=200)
+            self.bottom_panel.pack_propagate(False)
+            self._bottom_panel_visible = True
+
+    def _on_run_compile(self):
+        """Muestra/oculta el panel inferior y el panel derecho juntos."""
+        if self._bottom_panel_visible:
+            # Ocultar ambos
+            self.bottom_panel.pack_forget()
+            self._bottom_panel_visible = False
+            self.right_panel.pack_forget()
+            self._right_panel_visible = False
+        else:
+            # Mostrar panel inferior (más compacto)
+            self.bottom_panel.pack(side=tk.BOTTOM, fill=tk.X)
+            self.bottom_panel.configure(height=150)
+            self.bottom_panel.pack_propagate(False)
+            self._bottom_panel_visible = True
+            # Mostrar panel derecho
+            self.right_panel.pack(side=tk.RIGHT, fill=tk.Y)
+            self._right_panel_visible = True
+
+    # -----------------------------------------------------------------
+    # PANEL DERECHO (Tablas de análisis)
+    # -----------------------------------------------------------------
+
+    def _create_right_panel(self):
+        """Crea el panel derecho con pestañas de análisis."""
+        self._right_panel_visible = False
+
+        self.right_panel = ctk.CTkFrame(
+            self.body_frame,
+            fg_color=self.colors["activity_bg"],
+            width=280,
+            corner_radius=0,
+            border_width=1,
+            border_color=self.colors["hover"]
+        )
+        self.right_panel.pack(side=tk.RIGHT, fill=tk.Y)
+        self.right_panel.pack_propagate(False)
+
+        # --- Fila 1 de pestañas: Léxico, Sintáctico, Semántico + botón cerrar ---
+        tab_row1 = ctk.CTkFrame(
+            self.right_panel, fg_color=self.colors["title_bg"],
+            height=28, corner_radius=0
+        )
+        tab_row1.pack(fill=tk.X)
+        tab_row1.pack_propagate(False)
+
+        # --- Fila 2 de pestañas: Hash Table, Cód. Intermedio ---
+        tab_row2 = ctk.CTkFrame(
+            self.right_panel, fg_color=self.colors["title_bg"],
+            height=28, corner_radius=0
+        )
+        tab_row2.pack(fill=tk.X)
+        tab_row2.pack_propagate(False)
+
+        self._right_tabs = {}
+        self._right_current_tab = None
+        row1_names = ["Léxico", "Sintáctico", "Semántico"]
+        row2_names = ["Hash Table", "Cód. Intermedio"]
+
+        for name in row1_names:
+            lbl = ctk.CTkLabel(
+                tab_row1,
+                text=name,
+                fg_color="transparent",
+                text_color=self.colors["comments"],
+                font=("Segoe UI", 11),
+                padx=8,
+                pady=2,
+            )
+            lbl.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 2))
+            lbl.bind("<Button-1>", lambda e, n=name: self._set_right_tab(n))
+            lbl.bind("<Enter>", lambda e, w=lbl: w.configure(text_color=self.colors["fg"]))
+            lbl.bind("<Leave>", lambda e, w=lbl, n=name: w.configure(
+                text_color=self.colors["fg"] if n == self._right_current_tab else self.colors["comments"]
+            ))
+            content_frame = ctk.CTkFrame(
+                self.right_panel, fg_color=self.colors["bg"], corner_radius=0
+            )
+            self._right_tabs[name] = (lbl, content_frame)
+
+        # Botón cerrar en fila 1, a la derecha
+        close_btn = ctk.CTkLabel(
+            tab_row1, text="\u2715",
+            fg_color="transparent",
+            text_color=self.colors["comments"],
+            font=("Consolas", 13),
+            width=28,
+        )
+        close_btn.pack(side=tk.RIGHT, padx=(0, 4), fill=tk.Y)
+        close_btn.bind("<Button-1>", lambda e: self._close_right_panel())
+        close_btn.bind("<Enter>", lambda e: close_btn.configure(
+            fg_color="#e81123", text_color=self.colors["fg"]
+        ))
+        close_btn.bind("<Leave>", lambda e: close_btn.configure(
+            fg_color="transparent", text_color=self.colors["comments"]
+        ))
+
+        for name in row2_names:
+            lbl = ctk.CTkLabel(
+                tab_row2,
+                text=name,
+                fg_color="transparent",
+                text_color=self.colors["comments"],
+                font=("Segoe UI", 11),
+                padx=8,
+                pady=2,
+            )
+            lbl.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 2))
+            lbl.bind("<Button-1>", lambda e, n=name: self._set_right_tab(n))
+            lbl.bind("<Enter>", lambda e, w=lbl: w.configure(text_color=self.colors["fg"]))
+            lbl.bind("<Leave>", lambda e, w=lbl, n=name: w.configure(
+                text_color=self.colors["fg"] if n == self._right_current_tab else self.colors["comments"]
+            ))
+            content_frame = ctk.CTkFrame(
+                self.right_panel, fg_color=self.colors["bg"], corner_radius=0
+            )
+            self._right_tabs[name] = (lbl, content_frame)
+
+        # Línea separadora
+        ctk.CTkFrame(
+            self.right_panel, fg_color=self.colors["hover"], height=1, corner_radius=0
+        ).pack(fill=tk.X)
+
+        # Activar primera pestaña
+        self._set_right_tab(row1_names[0])
+
+    def _set_right_tab(self, name):
+        """Cambia la pestaña activa del panel derecho."""
+        if self._right_current_tab and self._right_current_tab in self._right_tabs:
+            old_lbl, old_content = self._right_tabs[self._right_current_tab]
+            old_lbl.configure(text_color=self.colors["comments"])
+            old_content.pack_forget()
+
+        if name in self._right_tabs:
+            lbl, content = self._right_tabs[name]
+            lbl.configure(text_color=self.colors["fg"])
+            content.pack(fill=tk.BOTH, expand=True)
+            self._right_current_tab = name
+
+    def _close_right_panel(self):
+        """Oculta solo el panel derecho."""
+        self.right_panel.pack_forget()
+        self._right_panel_visible = False
+
+    # -----------------------------------------------------------------
+    # EXPLORADOR DE ARCHIVOS
+    # -----------------------------------------------------------------
+
+    def _create_explorer_panel(self):
+        """Crea el panel lateral del explorador de archivos."""
+        self.explorer_visible = True
+        self._expanded_folders = set()
+
+        self.explorer_panel = ctk.CTkFrame(
+            self.body_frame,
+            fg_color=self.colors["activity_bg"],
+            width=250,
+            corner_radius=0
+        )
+        self.explorer_panel.pack(side=tk.LEFT, fill=tk.Y)
+        self.explorer_panel.pack_propagate(False)
+
+        # Encabezado
+        header_frame = ctk.CTkFrame(
+            self.explorer_panel, fg_color="transparent", corner_radius=0, height=30
+        )
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+
+        ctk.CTkLabel(
+            header_frame,
+            text="EXPLORER",
+            fg_color="transparent",
+            text_color=self.colors["menu_fg"],
+            font=("Segoe UI", 11),
+            anchor="w"
+        ).pack(side=tk.LEFT, padx=10, fill=tk.Y)
+
+        # Línea separadora
+        ctk.CTkFrame(
+            self.explorer_panel, fg_color=self.colors["hover"], height=1, corner_radius=0
+        ).pack(fill=tk.X)
+
+        # Área desplazable para el árbol de archivos
+        self.explorer_tree = ctk.CTkScrollableFrame(
+            self.explorer_panel,
+            fg_color="transparent",
+            corner_radius=0,
+            scrollbar_button_color=self.colors["activity_bg"],
+            scrollbar_button_hover_color=self.colors["hover"]
+        )
+        self.explorer_tree.pack(fill=tk.BOTH, expand=True)
+
+        self._refresh_explorer()
+
+    def _show_side_panel(self, panel_name):
+        """Muestra el panel lateral indicado, ocultando el otro. Si ya está visible, lo oculta."""
+        panels = {
+            "explorer": self.explorer_panel,
+            "search": self.search_panel,
+            "run": self.run_panel,
+        }
+
+        if self._active_panel == panel_name:
+            # Toggle: ocultar el panel activo
+            panels[panel_name].pack_forget()
+            self._active_panel = None
+            return
+
+        # Ocultar el panel activo actual
+        if self._active_panel and self._active_panel in panels:
+            panels[self._active_panel].pack_forget()
+
+        # Mostrar el nuevo panel
+        panels[panel_name].pack(side=tk.LEFT, fill=tk.Y, before=self.editor_frame)
+        self._active_panel = panel_name
+
+    def _toggle_explorer(self):
+        """Muestra u oculta el panel del explorador (legacy)."""
+        self._show_side_panel("explorer")
+
+    # -----------------------------------------------------------------
+    # PANEL DE RUN AND DEBUG
+    # -----------------------------------------------------------------
+
+    def _create_run_panel(self):
+        """Crea el panel lateral de Run and Debug (solo visual)."""
+        self.run_panel = ctk.CTkFrame(
+            self.body_frame,
+            fg_color=self.colors["activity_bg"],
+            width=250,
+            corner_radius=0
+        )
+        self.run_panel.pack(side=tk.LEFT, fill=tk.Y)
+        self.run_panel.pack_propagate(False)
+
+        # --- Encabezado ---
+        header_frame = ctk.CTkFrame(
+            self.run_panel, fg_color="transparent", corner_radius=0, height=30
+        )
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+
+        ctk.CTkLabel(
+            header_frame,
+            text="RUN AND DEBUG",
+            fg_color="transparent",
+            text_color=self.colors["menu_fg"],
+            font=("Segoe UI", 11),
+            anchor="w"
+        ).pack(side=tk.LEFT, padx=10, fill=tk.Y)
+
+        # Botón ··· (más opciones) en el encabezado
+        more_btn = ctk.CTkLabel(
+            header_frame,
+            text="···",
+            fg_color="transparent",
+            text_color=self.colors["comments"],
+            font=("Consolas", 14, "bold"),
+            width=28,
+        )
+        more_btn.pack(side=tk.RIGHT, padx=8, fill=tk.Y)
+        more_btn.bind("<Enter>", lambda e: more_btn.configure(
+            fg_color=self.colors["hover"], text_color=self.colors["fg"]
+        ))
+        more_btn.bind("<Leave>", lambda e: more_btn.configure(
+            fg_color="transparent", text_color=self.colors["comments"]
+        ))
+
+        # Línea separadora
+        ctk.CTkFrame(
+            self.run_panel, fg_color=self.colors["hover"], height=1, corner_radius=0
+        ).pack(fill=tk.X)
+
+        # --- Sección RUN colapsable ---
+        run_section_header = ctk.CTkFrame(
+            self.run_panel, fg_color="transparent", corner_radius=0, height=28
+        )
+        run_section_header.pack(fill=tk.X, pady=(4, 0))
+        run_section_header.pack_propagate(False)
+
+        ctk.CTkLabel(
+            run_section_header,
+            text="\u2304   RUN",
+            fg_color="transparent",
+            text_color=self.colors["fg"],
+            font=("Segoe UI", 11, "bold"),
+            anchor="w"
+        ).pack(side=tk.LEFT, padx=10, fill=tk.Y)
+
+        # --- Contenido de la sección RUN ---
+        run_content = ctk.CTkFrame(
+            self.run_panel, fg_color="transparent", corner_radius=0
+        )
+        run_content.pack(fill=tk.X, padx=12, pady=(10, 0))
+
+        # Botón "Ejecutar y Compilar"
+        self.run_button = ctk.CTkButton(
+            run_content,
+            text="Ejecutar y Compilar",
+            fg_color=self.colors["hover"],
+            hover_color=self.colors["comments"],
+            text_color=self.colors["fg"],
+            font=("Segoe UI", 13),
+            height=32,
+            corner_radius=4,
+            command=self._on_run_compile,
+        )
+        self.run_button.pack(fill=tk.X, pady=(4, 0))
+
+    # -----------------------------------------------------------------
+    # PANEL DE BÚSQUEDA
+    # -----------------------------------------------------------------
+
+    def _create_search_panel(self):
+        """Crea el panel lateral de búsqueda (solo visual)."""
+        self.search_panel = ctk.CTkFrame(
+            self.body_frame,
+            fg_color=self.colors["activity_bg"],
+            width=250,
+            corner_radius=0
+        )
+        self.search_panel.pack(side=tk.LEFT, fill=tk.Y)
+        self.search_panel.pack_propagate(False)
+
+        # --- Encabezado ---
+        header_frame = ctk.CTkFrame(
+            self.search_panel, fg_color="transparent", corner_radius=0, height=30
+        )
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+
+        ctk.CTkLabel(
+            header_frame,
+            text="SEARCH",
+            fg_color="transparent",
+            text_color=self.colors["menu_fg"],
+            font=("Segoe UI", 11),
+            anchor="w"
+        ).pack(side=tk.LEFT, padx=10, fill=tk.Y)
+
+        # Línea separadora
+        ctk.CTkFrame(
+            self.search_panel, fg_color=self.colors["hover"], height=1, corner_radius=0
+        ).pack(fill=tk.X)
+
+        # --- Área de búsqueda ---
+        search_area = ctk.CTkFrame(
+            self.search_panel, fg_color="transparent", corner_radius=0
+        )
+        search_area.pack(fill=tk.X, padx=8, pady=(10, 0))
+
+        # Fila: campo de texto + flecha de expandir
+        search_row = ctk.CTkFrame(search_area, fg_color="transparent", corner_radius=0)
+        search_row.pack(fill=tk.X)
+
+        # Flecha colapsable (▷)
+        self._search_details_open = False
+        self._search_toggle_arrow = ctk.CTkLabel(
+            search_row,
+            text="\u25B7",
+            fg_color="transparent",
+            text_color=self.colors["menu_fg"],
+            font=("Segoe UI", 12),
+            width=20
+        )
+        self._search_toggle_arrow.pack(side=tk.LEFT)
+        self._search_toggle_arrow.bind("<Button-1>", lambda e: self._toggle_search_details())
+
+        # Campo de búsqueda principal
+        self.search_entry = ctk.CTkEntry(
+            search_row,
+            placeholder_text="Search",
+            fg_color=self.colors["bg"],
+            border_color=self.colors["hover"],
+            text_color=self.colors["fg"],
+            placeholder_text_color=self.colors["comments"],
+            font=("Segoe UI", 12),
+            height=28,
+            corner_radius=4
+        )
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(2, 0))
+
+        # Botones de opción a la derecha del campo (Aa, ab, .*)
+        options_frame = ctk.CTkFrame(search_area, fg_color="transparent", corner_radius=0)
+        options_frame.pack(fill=tk.X, pady=(4, 0))
+
+        # Spacer para alinear a la derecha
+        ctk.CTkLabel(options_frame, text="", fg_color="transparent").pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        search_options = [
+            ("Aa", "Match Case"),
+            ("ab", "Match Whole Word"),
+            (".*", "Use Regular Expression"),
+        ]
+        for text, tooltip_txt in search_options:
+            opt_btn = ctk.CTkLabel(
+                options_frame,
+                text=text,
+                fg_color="transparent",
+                text_color=self.colors["comments"],
+                font=("Consolas", 11, "bold"),
+                width=28,
+                height=22,
+            )
+            opt_btn.pack(side=tk.LEFT, padx=1)
+            opt_btn.bind("<Enter>", lambda e, w=opt_btn: w.configure(
+                fg_color=self.colors["hover"], text_color=self.colors["fg"]
+            ))
+            opt_btn.bind("<Leave>", lambda e, w=opt_btn: w.configure(
+                fg_color="transparent", text_color=self.colors["comments"]
+            ))
+
+        # Botón ··· (más opciones)
+        more_btn = ctk.CTkLabel(
+            options_frame,
+            text="···",
+            fg_color="transparent",
+            text_color=self.colors["comments"],
+            font=("Consolas", 11, "bold"),
+            width=22,
+            height=22,
+        )
+        more_btn.pack(side=tk.LEFT, padx=(4, 0))
+        more_btn.bind("<Enter>", lambda e: more_btn.configure(
+            fg_color=self.colors["hover"], text_color=self.colors["fg"]
+        ))
+        more_btn.bind("<Leave>", lambda e: more_btn.configure(
+            fg_color="transparent", text_color=self.colors["comments"]
+        ))
+
+        # --- Panel expandible de detalles (Replace, include/exclude) ---
+        self._search_details_frame = ctk.CTkFrame(
+            self.search_panel, fg_color="transparent", corner_radius=0
+        )
+        # No se empaqueta hasta que el usuario lo expanda
+
+    def _toggle_search_details(self):
+        """Expande o colapsa la sección de detalles del panel de búsqueda."""
+        if self._search_details_open:
+            self._search_details_frame.pack_forget()
+            self._search_toggle_arrow.configure(text="\u25B7")  # ▷
+            self._search_details_open = False
+        else:
+            self._search_details_frame.pack(fill=tk.X, padx=8, pady=(6, 0), after=self.search_entry.master.master)
+            self._search_toggle_arrow.configure(text="\u25BD")  # ▽
+            self._search_details_open = True
+
+    def _refresh_explorer(self):
+        """Reconstruye el árbol de archivos del explorador."""
+        for widget in self.explorer_tree.winfo_children():
+            widget.destroy()
+
+        base_path = os.getcwd()
+
+        # Nombre de la carpeta raíz del proyecto
+        folder_name = os.path.basename(base_path)
+        root_row = ctk.CTkFrame(self.explorer_tree, fg_color="transparent", height=28, corner_radius=0)
+        root_row.pack(fill=tk.X)
+        root_row.pack_propagate(False)
+        ctk.CTkLabel(
+            root_row,
+            text=f"\U0001F4C2  {folder_name}",
+            fg_color="transparent",
+            text_color=self.colors["strings"],
+            font=("Segoe UI", 12, "bold"),
+            anchor="w"
+        ).pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8)
+
+        self._render_tree(base_path, 1)
+
+    def _render_tree(self, path, level):
+        """Renderiza recursivamente el contenido de un directorio."""
+        skip_dirs = {'__pycache__', '.git', 'venv', '.idea', 'node_modules',
+                     '.mypy_cache', '.pytest_cache'}
+        try:
+            entries = os.listdir(path)
+        except PermissionError:
+            return
+
+        # Separar carpetas y archivos, ordenar alfabéticamente
+        dirs = sorted(
+            [e for e in entries if os.path.isdir(os.path.join(path, e))],
+            key=str.lower
+        )
+        files = sorted(
+            [e for e in entries if not os.path.isdir(os.path.join(path, e))],
+            key=str.lower
+        )
+
+        for entry in dirs + files:
+            full_path = os.path.join(path, entry)
+            is_dir = os.path.isdir(full_path)
+
+            # Omitir directorios ruidosos
+            if is_dir and entry in skip_dirs:
+                continue
+
+            indent = level * 18
+
+            if is_dir:
+                is_expanded = full_path in self._expanded_folders
+                icon = "\U0001F4C2" if is_expanded else "\U0001F4C1"  # 📂 / 📁
+            else:
+                icon = "\U0001F4C4"  # 📄
+
+            # Fila del elemento
+            row = ctk.CTkFrame(self.explorer_tree, fg_color="transparent", height=26, corner_radius=0)
+            row.pack(fill=tk.X)
+            row.pack_propagate(False)
+
+            label = ctk.CTkLabel(
+                row,
+                text=f"{icon}  {entry}",
+                fg_color="transparent",
+                text_color=self.colors["fg"],
+                font=("Segoe UI", 12),
+                anchor="w"
+            )
+            label.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(indent + 4, 0))
+
+            # Efecto hover
+            for w in (row, label):
+                w.bind("<Enter>", lambda e, r=row: r.configure(fg_color=self.colors["hover"]))
+                w.bind("<Leave>", lambda e, r=row: r.configure(fg_color="transparent"))
+
+            if is_dir:
+                for w in (row, label):
+                    w.bind("<Button-1>", lambda e, fp=full_path: self._toggle_folder(fp))
+
+                # Renderizar hijos si está expandido
+                if is_expanded:
+                    self._render_tree(full_path, level + 1)
+            else:
+                for w in (row, label):
+                    w.bind("<Button-1>", lambda e, fp=full_path, fn=entry: self._open_file_from_explorer(fp, fn))
+
+    def _toggle_folder(self, folder_path):
+        """Expande o colapsa una carpeta en el explorador."""
+        if folder_path in self._expanded_folders:
+            # Al colapsar, también quitar subcarpetas expandidas
+            to_remove = [p for p in self._expanded_folders if p.startswith(folder_path)]
+            for p in to_remove:
+                self._expanded_folders.discard(p)
+        else:
+            self._expanded_folders.add(folder_path)
+        self._refresh_explorer()
+
+    def _open_file_from_explorer(self, file_path, file_name):
+        """Abre un archivo desde el explorador en una nueva pestaña."""
+        # Si ya está abierto, solo cambiar a esa pestaña
+        if file_name in self.opened_files:
+            self.tab_manager.set(file_name)
+            return
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            try:
+                with open(file_path, "r", encoding="latin-1") as f:
+                    content = f.read()
+            except Exception:
+                return
+        except Exception:
+            return
+
+        self._add_new_tab(file_name, content)
+        self.opened_files[file_name] = file_path
 
     def _show_file_menu(self):
         # SEGURIDAD: Si el menú ya existe, lo cerramos antes de crear otro
