@@ -94,10 +94,6 @@ class CodeEditorFrame(ctk.CTkFrame):
         )
         self.text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.linenumbers.text_widget = self.text
-         # Vincular eventos de movimiento del cursor
-        self.text.bind("<<Change>>", self._on_cursor_move)
-        self.text.bind("<KeyRelease>", self._on_cursor_move)
-        self.text.bind("<ButtonRelease-1>", self._on_cursor_move)
 
         # 6. CONECTAMOS TODO (Ahora que self.text ya existe)
         def _on_yscroll(*args):
@@ -120,6 +116,7 @@ class CodeEditorFrame(ctk.CTkFrame):
         self.text.bind("<Configure>", self._on_change)
         self.text.bind("<KeyRelease>", self._on_change)
         self.text.bind("<ButtonRelease-1>", self._on_change)
+        self.text.bind("<B1-Motion>", self._on_change)
         self.text.bind("<MouseWheel>", self._on_change)
 
     def _on_cursor_move(self, event=None):
@@ -134,3 +131,4 @@ class CodeEditorFrame(ctk.CTkFrame):
     def _on_change(self, event=None):
         self.text.update_idletasks()
         self.linenumbers.redraw()
+        self._on_cursor_move()
