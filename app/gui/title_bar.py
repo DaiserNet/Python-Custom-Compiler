@@ -91,7 +91,8 @@ class TitleBar(ctk.CTkFrame):
             ("Open File…",  self.callbacks["open_file"]),
             ("Close File",  self.callbacks["close_file"]),
             ("Save",        self.callbacks["save_file"]),
-            ("Save As…",    self.callbacks["save_as"])
+            ("Save As…",    self.callbacks["save_as"]),
+            ("Exit",        self.callbacks["close"]),
         ]
 
         for text, cb in options:

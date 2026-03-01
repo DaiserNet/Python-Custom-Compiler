@@ -5,6 +5,7 @@ import os
 
 from app.gui.custom_tab_view import CustomTabView
 from app.gui.title_bar import TitleBar
+from app.gui.quick_access_bar import QuickAccessBar
 from app.gui.activity_bar import ActivityBar
 from app.gui.explorer_panel import ExplorerPanel
 from app.gui.search_panel import SearchPanel
@@ -75,6 +76,17 @@ class MainWindow:
             "save_as":    self._on_save_as_file,
         })
         self.title_bar.pack(fill=tk.X, side=tk.TOP)
+
+        # --- Barra de acceso rápido ---
+        self.quick_access_bar = QuickAccessBar(
+            self.main_container, self.colors, callbacks={
+                "open_file":   self._on_open_file,
+                "save_file":   self._on_save_file,
+                "run_compile": self._on_run_compile,
+                "exit_app":    self.root.destroy,
+            }
+        )
+        self.quick_access_bar.pack(fill=tk.X, side=tk.TOP)
 
         # Barra de estado (abajo)
         self.status_bar = StatusBar(self.main_container, self.colors)
