@@ -68,6 +68,7 @@ class MainWindow:
             "open_file":  self._on_open_file,
             "close_file": self._on_close_file,
             "save_file":  self._on_save_file,
+            "save_as":    self._on_save_as_file,
         })
         self.title_bar.pack(fill=tk.X, side=tk.TOP)
 
@@ -235,6 +236,26 @@ class MainWindow:
             )
             if not file_path:
                 return
+
+        content = self.editors[tab_name].text.get("1.0", tk.END)
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            self.opened_files[tab_name] = file_path
+        except Exception as e:
+            print(f"Error al guardar: {e}")
+
+    def _on_save_as_file(self):
+        tab_name = self.tab_manager.get()
+        if not tab_name or tab_name not in self.editors:
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            initialfile=tab_name, defaultextension=".txt",
+            filetypes=[("Archivos de texto", "*.txt"), ("Todos", "*.*")]
+        )
+        if not file_path:
+            return
 
         content = self.editors[tab_name].text.get("1.0", tk.END)
         try:
