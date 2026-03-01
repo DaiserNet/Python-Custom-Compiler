@@ -60,10 +60,10 @@ class LineNumberCanvas(tk.Canvas):
 
 # Actualizamos a CTkFrame
 class CodeEditorFrame(ctk.CTkFrame):
-    def __init__(self, parent, colors, *args, **kwargs):
+    def __init__(self, parent, colors, on_cursor_move=None, *args, **kwargs):
         super().__init__(parent, fg_color=colors["bg"], corner_radius=0, *args, **kwargs)
         self.colors = colors
-
+        self.on_cursor_move = on_cursor_move
         # 1. Creamos la Scrollbar Horizontal primero y la ponemos abajo
         # Usamos un comando temporal, lo actualizaremos cuando creemos el texto
         self.h_scrollbar = ctk.CTkScrollbar(self, orientation="horizontal")
@@ -94,6 +94,10 @@ class CodeEditorFrame(ctk.CTkFrame):
         )
         self.text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.linenumbers.text_widget = self.text
+         # Vincular eventos de movimiento del cursor
+        self.text.bind("<<Change>>", self._on_cursor_move)
+        self.text.bind("<KeyRelease>", self._on_cursor_move)
+        self.text.bind("<ButtonRelease-1>", self._on_cursor_move)
 
         # 6. CONECTAMOS TODO (Ahora que self.text ya existe)
         def _on_yscroll(*args):
@@ -117,6 +121,15 @@ class CodeEditorFrame(ctk.CTkFrame):
         self.text.bind("<KeyRelease>", self._on_change)
         self.text.bind("<ButtonRelease-1>", self._on_change)
         self.text.bind("<MouseWheel>", self._on_change)
+
+    def _on_cursor_move(self, event=None):
+        """Obtiene la posición actual y llama al callback si existe."""
+        cursor_index = self.text.index(tk.INSERT)
+        line, col = cursor_index.split('.')
+        line = int(line)
+        col = int(col) + 1   # tkinter cuenta desde 0, mostrar desde 1
+        if self.on_cursor_move:
+            self.on_cursor_move(line, col)
 
     def _on_change(self, event=None):
         self.text.update_idletasks()

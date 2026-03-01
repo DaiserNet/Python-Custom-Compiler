@@ -12,6 +12,7 @@ from app.gui.run_panel import RunPanel
 from app.gui.bottom_panel import BottomPanel
 from app.gui.right_panel import RightPanel
 from app.gui.components import CodeEditorFrame
+from app.gui.status_bar import StatusBar
 
 class MainWindow:
     """Ventana principal – actúa como controlador / orquestador."""
@@ -27,6 +28,9 @@ class MainWindow:
         self._setup_window()
         self._setup_colors()
         self._create_ui()
+
+        # Editor activo para actualizar status bar
+        self.current_editor = None   
 
     # ==================================================================
     # Colores (Dracula)
@@ -72,6 +76,10 @@ class MainWindow:
         })
         self.title_bar.pack(fill=tk.X, side=tk.TOP)
 
+        # Barra de estado (abajo)
+        self.status_bar = StatusBar(self.main_container, self.colors)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        
         # --- Cuerpo ---
         self.body_frame = ctk.CTkFrame(self.main_container, fg_color=self.colors["bg"], corner_radius=0)
         self.body_frame.pack(fill=tk.BOTH, expand=True)
@@ -112,6 +120,38 @@ class MainWindow:
         self.run_panel.pack_forget()
         self.right_panel.pack_forget()
 
+        
+
+    # ==================================================================
+    # Deteccion de Cursor para actualizar Status Bar
+    # ==================================================================
+    def _on_cursor_move(self, line, col):
+        """Callback llamado desde el editor cuando el cursor se mueve."""
+        self.status_bar.update_cursor_position(line, col)
+
+    def _update_status_from_editor(self):
+        """Actualiza la barra con la posición actual del editor activo."""
+        if self.current_editor:
+            cursor_index = self.current_editor.text.index(tk.INSERT)
+            line, col = cursor_index.split('.')
+            line = int(line)
+            col = int(col) + 1
+            self.status_bar.update_cursor_position(line, col)
+
+    def _on_tab_changed(self, tab_name):
+        """Se ejecuta al cambiar de pestaña."""
+        if tab_name is None:
+            self.current_editor = None
+            self.status_bar.update_cursor_position(0, 0)   # O " - "
+            self.status_bar.update_file_type("")
+        elif tab_name in self.editors:
+            self.current_editor = self.editors[tab_name]
+            self._update_status_from_editor()
+            # Opcional: mostrar extensión del archivo
+            ext = os.path.splitext(tab_name)[1] or "Texto"
+            self.status_bar.update_file_type(ext)
+
+
     # ------------------------------------------------------------------
     # Área del editor + panel inferior
     # ------------------------------------------------------------------
@@ -123,6 +163,7 @@ class MainWindow:
         self.tab_manager = CustomTabView(self.editor_frame, colors=self.colors)
         self.tab_manager.pack(fill=tk.BOTH, expand=True)
         self.tab_manager.set_close_callback(self._on_tab_close)
+        self.tab_manager.on_tab_change = self._on_tab_changed # Vinculamos el callback de cambio de pestaña
 
         # Panel inferior (oculto por defecto)
         self.bottom_panel = BottomPanel(self.editor_frame, self.colors)
@@ -156,12 +197,15 @@ class MainWindow:
     def _add_new_tab(self, name, content=""):
         self.tab_manager.add(name)
         tab_frame = self.tab_manager.tab(name)
-        editor = CodeEditorFrame(tab_frame, self.colors)
+        editor = CodeEditorFrame(tab_frame, self.colors, on_cursor_move=self._on_cursor_move)
         editor.pack(fill=tk.BOTH, expand=True)
         editor.text.insert("1.0", content)
         self.editors[name] = editor
         editor._on_change()
         self.tab_manager.set(name)
+        # Actualizar editor actual y barra de estado
+        self.current_editor = editor
+        self._update_status_from_editor()
 
     # ==================================================================
     # Gestión de paneles laterales

@@ -8,6 +8,7 @@ class CustomTabView(ctk.CTkFrame):
     def __init__(self, parent, colors, **kwargs):
         super().__init__(parent, **kwargs)
         self.colors = colors
+        self.on_tab_change = None
 
         # Barra de pestañas
         self.tab_bar = ctk.CTkFrame(
@@ -75,6 +76,8 @@ class CustomTabView(ctk.CTkFrame):
         new_content.pack(fill=tk.BOTH, expand=True)
         self.current_tab = name
         self._set_tab_style(name, selected=True)
+        if self.on_tab_change:
+            self.on_tab_change(name)
 
     def delete(self, name):
         """Elimina la pestaña y su contenido."""
@@ -91,6 +94,8 @@ class CustomTabView(ctk.CTkFrame):
                 self.set(new_tab)
             else:
                 self.current_tab = None
+                if self.on_tab_change:
+                    self.on_tab_change(None)
 
     def tab(self, name):
         """Devuelve el frame de contenido de la pestaña indicada."""
