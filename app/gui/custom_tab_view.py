@@ -53,6 +53,9 @@ class CustomTabView(ctk.CTkFrame):
         )
         close_btn.pack(side=tk.LEFT, padx=(0, 5))
 
+        btn_frame.tab_label = label
+        btn_frame.close_btn = close_btn
+
         self.tabs[name] = (btn_frame, content)
 
         if len(self.tabs) == 1:
@@ -113,3 +116,21 @@ class CustomTabView(ctk.CTkFrame):
         btn_frame, _ = self.tabs[name]
         color = self.colors["bg"] if selected else self.colors["title_bg"]
         btn_frame.configure(fg_color=color)
+
+    def rename_tab(self, old_name, new_name):
+        """Cambia el nombre de una pestaña existente."""
+        if old_name not in self.tabs or new_name in self.tabs:
+            return
+
+        btn_frame, content = self.tabs.pop(old_name)
+        
+        label = btn_frame.tab_label
+        label.configure(text=new_name)
+        label.bind("<Button-1>", lambda e, n=new_name: self.set(n))
+        
+        close_btn = btn_frame.close_btn
+        close_btn.configure(command=lambda n=new_name: self._close_tab(n))
+        self.tabs[new_name] = (btn_frame, content)
+        
+        if self.current_tab == old_name:
+            self.current_tab = new_name

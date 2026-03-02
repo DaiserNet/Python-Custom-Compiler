@@ -279,6 +279,11 @@ class MainWindow:
         if tab_name:
             self._on_tab_close(tab_name)
 
+    def _rename_tab_logic(self, old_name, new_name):
+        self.tab_manager.rename_tab(old_name, new_name)
+        self.editors[new_name] = self.editors.pop(old_name)
+        self.opened_files[new_name] = self.opened_files.pop(old_name)
+
     def _on_save_file(self):
         tab_name = self.tab_manager.get()
         if not tab_name or tab_name not in self.editors:
@@ -286,18 +291,17 @@ class MainWindow:
 
         file_path = self.opened_files.get(tab_name)
         if not file_path:
-            file_path = filedialog.asksaveasfilename(
-                initialfile=tab_name, defaultextension=".txt",
-                filetypes=[("Archivos de texto", "*.txt"), ("Todos", "*.*")]
-            )
-            if not file_path:
-                return
+            self._on_save_as_file()
+            return
 
         content = self.editors[tab_name].text.get("1.0", tk.END)
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
             self.opened_files[tab_name] = file_path
+            new_name = os.path.basename(file_path)
+            if tab_name != new_name:
+                self._rename_tab_logic(tab_name, new_name)
         except Exception as e:
             print(f"Error al guardar: {e}")
 
@@ -318,6 +322,10 @@ class MainWindow:
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
             self.opened_files[tab_name] = file_path
+            
+            new_name = os.path.basename(file_path)
+            if tab_name != new_name:
+                self._rename_tab_logic(tab_name, new_name)
         except Exception as e:
             print(f"Error al guardar: {e}")
 
