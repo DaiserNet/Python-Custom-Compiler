@@ -1,6 +1,9 @@
 import tkinter as tk
 import customtkinter as ctk
 
+from app.core.lexer import LexicalAnalyzer
+from app.core.tokens import token_color_group
+
 # Mantenemos CustomText como tk.Text puro para no romper el proxy y dlineinfo
 class CustomText(tk.Text):
     def __init__(self, *args, **kwargs):
@@ -60,10 +63,12 @@ class LineNumberCanvas(tk.Canvas):
 
 # Actualizamos a CTkFrame
 class CodeEditorFrame(ctk.CTkFrame):
-    def __init__(self, parent, colors, on_cursor_move=None, *args, **kwargs):
+    def __init__(self, parent, colors, on_cursor_move=None, on_text_change=None, *args, **kwargs):
         super().__init__(parent, fg_color=colors["bg"], corner_radius=0, *args, **kwargs)
         self.colors = colors
         self.on_cursor_move = on_cursor_move
+        self.on_text_change = on_text_change
+        self.lexer = LexicalAnalyzer()
         # 1. Creamos la Scrollbar Horizontal primero y la ponemos abajo
         # Usamos un comando temporal, lo actualizaremos cuando creemos el texto
         self.h_scrollbar = ctk.CTkScrollbar(self, orientation="horizontal")
@@ -94,6 +99,7 @@ class CodeEditorFrame(ctk.CTkFrame):
         )
         self.text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.linenumbers.text_widget = self.text
+        self._configure_syntax_tags()
 
         # 6. CONECTAMOS TODO (Ahora que self.text ya existe)
         def _on_yscroll(*args):
@@ -119,6 +125,39 @@ class CodeEditorFrame(ctk.CTkFrame):
         self.text.bind("<B1-Motion>", self._on_change)
         self.text.bind("<MouseWheel>", self._on_change)
 
+    def _configure_syntax_tags(self):
+        self.text.tag_configure("token_color_1", foreground=self.colors.get("token_color_1", "#61afef"))
+        self.text.tag_configure("token_color_2", foreground=self.colors.get("token_color_2", "#8be9fd"))
+        self.text.tag_configure("token_color_3", foreground=self.colors.get("token_color_3", "#6272a4"))
+        self.text.tag_configure("token_color_4", foreground=self.colors.get("token_color_4", "#ff79c6"))
+        self.text.tag_configure("token_color_5", foreground=self.colors.get("token_color_5", "#ffb86c"))
+        self.text.tag_configure("token_color_6", foreground=self.colors.get("token_color_6", "#50fa7b"))
+        self.text.tag_configure(
+            "lexical_error_marker",
+            foreground="#ff5555",
+            underline=True,
+        )
+
+    def _apply_syntax_highlighting(self):
+        source = self.text.get("1.0", "end-1c")
+        for color_tag in (
+            "token_color_1",
+            "token_color_2",
+            "token_color_3",
+            "token_color_4",
+            "token_color_5",
+            "token_color_6",
+        ):
+            self.text.tag_remove(color_tag, "1.0", tk.END)
+
+        for token in self.lexer.tokenize(source):
+            group = token_color_group(token.token_type)
+            if group is None:
+                continue
+            start_index = f"1.0+{token.start}c"
+            end_index = f"1.0+{token.end}c"
+            self.text.tag_add(f"token_color_{group}", start_index, end_index)
+
     def _on_cursor_move(self, event=None):
         """Obtiene la posición actual y llama al callback si existe."""
         cursor_index = self.text.index(tk.INSERT)
@@ -128,7 +167,43 @@ class CodeEditorFrame(ctk.CTkFrame):
         if self.on_cursor_move:
             self.on_cursor_move(line, col)
 
+    def clear_lexical_error_marks(self):
+        self.text.tag_remove("lexical_error_marker", "1.0", tk.END)
+
+    def apply_lexical_errors(self, errors):
+        self.clear_lexical_error_marks()
+        for error in errors:
+            index = self._error_to_text_index(error)
+            if index is None:
+                continue
+            end_index = self.text.index(f"{index}+1c")
+            self.text.tag_add("lexical_error_marker", index, end_index)
+
+        # Keep lexical errors visually above syntax colors.
+        self.text.tag_raise("lexical_error_marker")
+
+    def focus_on_lexical_error(self, error):
+        index = self._error_to_text_index(error)
+        if index is None:
+            return
+        self.text.mark_set(tk.INSERT, index)
+        self.text.see(index)
+        self._on_cursor_move()
+
+    def _error_to_text_index(self, error):
+        try:
+            line = max(int(getattr(error, "line", 1)), 1)
+            column = max(int(getattr(error, "column", 1)) - 1, 0)
+            index = f"{line}.{column}"
+            self.text.index(index)
+            return index
+        except Exception:
+            return None
+
     def _on_change(self, event=None):
         self.text.update_idletasks()
+        self._apply_syntax_highlighting()
         self.linenumbers.redraw()
         self._on_cursor_move()
+        if self.on_text_change:
+            self.on_text_change(self, self.text.get("1.0", "end-1c"))

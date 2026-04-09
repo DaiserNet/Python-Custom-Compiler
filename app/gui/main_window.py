@@ -3,6 +3,8 @@ from tkinter import filedialog
 import customtkinter as ctk
 import os
 
+from app.core.engine import CompilerEngine
+from app.core.tokens import TokenType
 from app.gui.custom_tab_view import CustomTabView
 from app.gui.title_bar import TitleBar
 from app.gui.quick_access_bar import QuickAccessBar
@@ -24,14 +26,18 @@ class MainWindow:
         self.editors = {}
         self.opened_files = {}
         self.untitled_count = 0
+        self.current_editor = None
+        self._lexical_analysis_after_id = None
+        self._focus_first_lexical_error_pending = False
+        self.compiler_engine = CompilerEngine()
+        self._project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        self._lexical_tokens_file_path = os.path.join(self._project_root, "lex_token.txt")
+        self._lexical_errors_file_path = os.path.join(self._project_root, "err_token.txt")
 
         # Configuración base
         self._setup_window()
         self._setup_colors()
         self._create_ui()
-
-        # Editor activo para actualizar status bar
-        self.current_editor = None   
 
     # ==================================================================
     # Colores (Dracula)
@@ -49,6 +55,12 @@ class MainWindow:
             "keywords":    "#ff79c6",
             "functions":   "#50fa7b",
             "variables":   "#8be9fd",
+            "token_color_1": "#61afef",
+            "token_color_2": "#8be9fd",
+            "token_color_3": "#6272a4",
+            "token_color_4": "#ff79c6",
+            "token_color_5": "#ffb86c",
+            "token_color_6": "#50fa7b",
         }
 
     # ==================================================================
@@ -132,6 +144,9 @@ class MainWindow:
         self.run_panel.pack_forget()
         self.right_panel.pack_forget()
 
+        # Lanzar analisis inicial para sincronizar paneles
+        self._schedule_lexical_analysis(delay_ms=0)
+
         
 
     # ==================================================================
@@ -162,6 +177,7 @@ class MainWindow:
             # Opcional: mostrar extensión del archivo
             ext = os.path.splitext(tab_name)[1] or "Texto"
             self.status_bar.update_file_type(ext)
+        self._schedule_lexical_analysis(delay_ms=0)
 
 
     # ------------------------------------------------------------------
@@ -182,34 +198,23 @@ class MainWindow:
 
         # Pestaña de bienvenida
         sample_code = (
-            "# Archivo principal\n"
-            "def mi_funcion():\n"
-            '    saludo = "Hola mundo"\n'
-            "    print(saludo)\n"
-            "    return True\n"
+            "int main {\n"
+            "  float valor = 12.5;\n"
+            "  // comentario de ejemplo\n"
+            "  if (valor >= 10) cout;\n"
+            "}\n"
         )
         self._add_new_tab("Welcome.txt", sample_code)
-
-        # Colorear el ejemplo
-        editor = self.editors["Welcome.txt"]
-        tw = editor.text
-        tw.tag_configure("comment",  foreground=self.colors["comments"])
-        tw.tag_configure("string",   foreground=self.colors["strings"])
-        tw.tag_configure("keyword",  foreground=self.colors["keywords"])
-        tw.tag_configure("function", foreground=self.colors["functions"])
-        tw.tag_configure("variable", foreground=self.colors["variables"])
-        tw.tag_add("comment",  "1.0",  "1.19")
-        tw.tag_add("keyword",  "2.0",  "2.3")
-        tw.tag_add("function", "2.4",  "2.14")
-        tw.tag_add("variable", "3.4",  "3.10")
-        tw.tag_add("string",   "3.13", "3.25")
-        tw.tag_add("keyword",  "5.4",  "5.10")
-        tw.tag_add("variable", "4.10", "4.16")
 
     def _add_new_tab(self, name, content=""):
         self.tab_manager.add(name)
         tab_frame = self.tab_manager.tab(name)
-        editor = CodeEditorFrame(tab_frame, self.colors, on_cursor_move=self._on_cursor_move)
+        editor = CodeEditorFrame(
+            tab_frame,
+            self.colors,
+            on_cursor_move=self._on_cursor_move,
+            on_text_change=self._on_editor_text_change,
+        )
         editor.pack(fill=tk.BOTH, expand=True)
         editor.text.insert("1.0", content)
         self.editors[name] = editor
@@ -218,6 +223,7 @@ class MainWindow:
         # Actualizar editor actual y barra de estado
         self.current_editor = editor
         self._update_status_from_editor()
+        self._schedule_lexical_analysis(delay_ms=0)
 
     # ==================================================================
     # Gestión de paneles laterales
@@ -244,12 +250,90 @@ class MainWindow:
     # Evento "Ejecutar y Compilar"
     # ==================================================================
     def _on_run_compile(self):
-        if self.bottom_panel.visible:
-            self.bottom_panel.hide()
-            self.right_panel.hide()
-        else:
+        if not self.bottom_panel.visible:
             self.bottom_panel.show(height=150)
+
+        if not self.right_panel.visible:
             self.right_panel.show()
+
+        self.bottom_panel.set_tab("Error Léxico")
+        self.right_panel.set_tab("Léxico")
+        self._focus_first_lexical_error_pending = True
+        self._schedule_lexical_analysis(delay_ms=0)
+
+    def _on_editor_text_change(self, editor, _content):
+        if editor is self.current_editor:
+            self._schedule_lexical_analysis(delay_ms=140)
+
+    def _schedule_lexical_analysis(self, delay_ms=140):
+        if self._lexical_analysis_after_id is not None:
+            try:
+                self.root.after_cancel(self._lexical_analysis_after_id)
+            except Exception:
+                pass
+        self._lexical_analysis_after_id = self.root.after(delay_ms, self._run_lexical_analysis)
+
+    def _run_lexical_analysis(self):
+        self._lexical_analysis_after_id = None
+        if not hasattr(self, "bottom_panel") or not hasattr(self, "right_panel"):
+            return
+
+        if self.current_editor is None:
+            self.bottom_panel.set_lexical_errors([])
+            self.right_panel.set_lexical_trace(None)
+            self._persist_lexical_outputs([], [])
+            self._focus_first_lexical_error_pending = False
+            return
+
+        source = self.current_editor.text.get("1.0", "end-1c")
+        result = self.compiler_engine.analyze_lexically(source)
+        self.current_editor.apply_lexical_errors(result.errors)
+        self.bottom_panel.set_lexical_errors(result.errors)
+        self.right_panel.set_lexical_trace(result)
+        self._persist_lexical_outputs(result.tokens, result.errors)
+
+        if self._focus_first_lexical_error_pending and result.errors:
+            self.current_editor.focus_on_lexical_error(result.errors[0])
+
+        self._focus_first_lexical_error_pending = False
+
+    def _persist_lexical_outputs(self, tokens, errors):
+        filtered_tokens = [
+            token for token in tokens
+            if token.token_type not in (TokenType.COMMENT_SINGLE, TokenType.COMMENT_MULTI)
+        ]
+
+        token_lines = ["# idx\ttype\tlexeme\tline\tcolumn"]
+        for idx, token in enumerate(filtered_tokens, start=1):
+            lexeme = token.lexeme.replace("\n", "\\n").replace("\t", "\\t")
+            token_lines.append(
+                f"{idx}\t{token.token_type.value}\t{lexeme}\t{token.line}\t{token.column}"
+            )
+
+        if len(token_lines) == 1:
+            token_lines.append("Sin tokens para exportar.")
+
+        error_lines = ["# idx\tline\tcolumn\tlexeme\tmessage"]
+        for idx, error in enumerate(errors, start=1):
+            lexeme = error.lexeme.replace("\n", "\\n").replace("\t", "\\t")
+            message = error.message.replace("\n", " ").replace("\t", " ")
+            error_lines.append(
+                f"{idx}\t{error.line}\t{error.column}\t{lexeme}\t{message}"
+            )
+
+        if len(error_lines) == 1:
+            error_lines.append("Sin errores lexicos.")
+
+        self._write_text_file(self._lexical_tokens_file_path, "\n".join(token_lines) + "\n")
+        self._write_text_file(self._lexical_errors_file_path, "\n".join(error_lines) + "\n")
+
+    @staticmethod
+    def _write_text_file(path, content):
+        try:
+            with open(path, "w", encoding="utf-8") as file_obj:
+                file_obj.write(content)
+        except Exception as exc:
+            print(f"No se pudo escribir {path}: {exc}")
 
     # ==================================================================
     # Operaciones de archivo

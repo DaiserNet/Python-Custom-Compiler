@@ -24,6 +24,7 @@ class BottomPanel(ctk.CTkFrame):
         self.visible = False
         self._tabs = {}
         self._current_tab = None
+        self._lexical_error_box = None
 
         self._build_ui()
 
@@ -74,8 +75,44 @@ class BottomPanel(ctk.CTkFrame):
         # Separador
         ctk.CTkFrame(self, fg_color=self.colors["hover"], height=1, corner_radius=0).pack(fill=tk.X)
 
+        # Contenido de pestañas de analisis
+        self._build_lexical_error_tab()
+
         # Activar primera pestaña
         self.set_tab(self.TAB_NAMES[0])
+
+    def _build_lexical_error_tab(self):
+        content = self.get_tab_content("Error Léxico")
+        if content is None:
+            return
+
+        header = ctk.CTkLabel(
+            content,
+            text="Errores detectados por el analizador léxico",
+            text_color=self.colors["comments"],
+            anchor="w",
+            font=("Segoe UI", 11),
+        )
+        header.pack(fill=tk.X, padx=8, pady=(8, 4))
+
+        self._lexical_error_box = ctk.CTkTextbox(
+            content,
+            fg_color=self.colors["bg"],
+            text_color=self.colors["fg"],
+            border_width=0,
+            corner_radius=0,
+            wrap="none",
+            font=("Consolas", 11),
+        )
+        self._lexical_error_box.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        self._set_textbox_value(self._lexical_error_box, "Sin analisis lexico ejecutado.")
+
+    @staticmethod
+    def _set_textbox_value(textbox, content):
+        textbox.configure(state="normal")
+        textbox.delete("1.0", tk.END)
+        textbox.insert("1.0", content)
+        textbox.configure(state="disabled")
 
     # ------------------------------------------------------------------
     # API pública
@@ -119,3 +156,31 @@ class BottomPanel(ctk.CTkFrame):
         if name in self._tabs:
             return self._tabs[name][1]
         return None
+
+    def set_lexical_errors(self, errors):
+        """Renderiza los errores léxicos con formato de linea y columna."""
+        if self._lexical_error_box is None:
+            return
+
+        if not errors:
+            self._set_textbox_value(self._lexical_error_box, "Sin errores lexicos.")
+            return
+
+        lines = []
+        for idx, error in enumerate(errors, start=1):
+            if isinstance(error, dict):
+                line = error.get("line", 0)
+                column = error.get("column", 0)
+                message = error.get("message", "Error lexico")
+                lexeme = error.get("lexeme", "")
+            else:
+                line = getattr(error, "line", 0)
+                column = getattr(error, "column", 0)
+                message = getattr(error, "message", "Error lexico")
+                lexeme = getattr(error, "lexeme", "")
+
+            lines.append(
+                f"{idx}. Linea {line}, columna {column}: {message} [lexema: {lexeme}]"
+            )
+
+        self._set_textbox_value(self._lexical_error_box, "\n".join(lines))
