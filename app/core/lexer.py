@@ -193,22 +193,20 @@ class LexicalAnalyzer:
                         )
                     continue
 
-            if i + 1 < length:
-                maybe_multi = source[i : i + 2]
-                token_type = self.MULTI_CHAR_TOKENS.get(maybe_multi)
-                if token_type is not None:
-                    i, line, column = self._advance_sequence(source, i, line, column, 2)
-                    tokens.append(
-                        Token(
-                            token_type=token_type,
-                            lexeme=maybe_multi,
-                            start=start,
-                            end=i,
-                            line=start_line,
-                            column=start_column,
-                        )
+            multi_operator = self._consume_multi_char_operator_with_gaps(source, i, line, column)
+            if multi_operator is not None:
+                maybe_multi, token_type, i, line, column = multi_operator
+                tokens.append(
+                    Token(
+                        token_type=token_type,
+                        lexeme=maybe_multi,
+                        start=start,
+                        end=i,
+                        line=start_line,
+                        column=start_column,
                     )
-                    continue
+                )
+                continue
 
             if ch in self.SYMBOLS:
                 i, line, column = self._advance_sequence(source, i, line, column, 1)
@@ -336,6 +334,42 @@ class LexicalAnalyzer:
         # identificadores adjuntos (ej. la palabra "algo" en "32.algo").
 
         return i, line, column, is_real, is_malformed
+
+    def _consume_multi_char_operator_with_gaps(self, source: str, i: int, line: int, column: int):
+        if i >= len(source):
+            return None
+
+        first_char = source[i]
+        if not any(op[0] == first_char for op in self.MULTI_CHAR_TOKENS):
+            return None
+
+        probe_i, probe_line, probe_column = self._advance_sequence(source, i, line, column, 1)
+
+        while probe_i < len(source) and source[probe_i].isspace():
+            probe_i, probe_line, probe_column = self._advance_sequence(
+                source,
+                probe_i,
+                probe_line,
+                probe_column,
+                1,
+            )
+
+        if probe_i >= len(source) or source[probe_i] == ";":
+            return None
+
+        maybe_multi = first_char + source[probe_i]
+        token_type = self.MULTI_CHAR_TOKENS.get(maybe_multi)
+        if token_type is None:
+            return None
+
+        probe_i, probe_line, probe_column = self._advance_sequence(
+            source,
+            probe_i,
+            probe_line,
+            probe_column,
+            1,
+        )
+        return maybe_multi, token_type, probe_i, probe_line, probe_column
 
     def _consume_single_line_comment(self, source: str, i: int, line: int, column: int):
         i, line, column = self._advance_sequence(source, i, line, column, 2)

@@ -14,6 +14,11 @@ class RightPanel(ctk.CTkFrame):
     ROW1_NAMES = ["Léxico", "Sintáctico", "Semántico"]
     ROW2_NAMES = ["Hash Table", "Cód. Intermedio"]
     MAX_VISIBLE_TOKENS = 400
+    DEFAULT_WIDTH = 280
+    MIN_WIDTH = 220
+    MAX_WIDTH = 560
+    MIN_EDITOR_WIDTH = 360
+    RESIZER_WIDTH = 5
 
     TABLE_INDEX_WIDTH = 4
     TABLE_TYPE_WIDTH = 18
@@ -25,7 +30,7 @@ class RightPanel(ctk.CTkFrame):
         super().__init__(
             parent,
             fg_color=colors["activity_bg"],
-            width=280,
+            width=self.DEFAULT_WIDTH,
             corner_radius=0,
             border_width=1,
             border_color=colors["hover"],
@@ -36,14 +41,40 @@ class RightPanel(ctk.CTkFrame):
         self._tabs = {}
         self._current_tab = None
         self._lexical_trace_box = None
+        self._resize_start_x = None
+        self._resize_start_width = self.DEFAULT_WIDTH
+        self._resize_handle = None
         self.pack_propagate(False)
 
+        if self.master is not None:
+            self.master.bind("<Configure>", self._on_parent_configure, add="+")
+
         self._build_ui()
+        self._clamp_width_to_bounds()
 
     # ------------------------------------------------------------------
     # Construcción
     # ------------------------------------------------------------------
     def _build_ui(self):
+        self._resize_handle = ctk.CTkFrame(
+            self,
+            fg_color=self.colors["hover"],
+            width=self.RESIZER_WIDTH,
+            corner_radius=0,
+        )
+        self._resize_handle.pack(side=tk.LEFT, fill=tk.Y)
+        self._resize_handle.pack_propagate(False)
+        self._resize_handle.bind("<ButtonPress-1>", self._on_resize_start)
+        self._resize_handle.bind("<B1-Motion>", self._on_resize_drag)
+        self._resize_handle.bind("<ButtonRelease-1>", self._on_resize_end)
+        self._resize_handle.bind("<Enter>", self._on_resize_handle_enter)
+        self._resize_handle.bind("<Leave>", self._on_resize_handle_leave)
+
+        try:
+            self._resize_handle.configure(cursor="sb_h_double_arrow")
+        except tk.TclError:
+            pass
+
         # Fila 1
         row1 = ctk.CTkFrame(self, fg_color=self.colors["title_bg"], height=28, corner_radius=0)
         row1.pack(fill=tk.X)
@@ -78,6 +109,64 @@ class RightPanel(ctk.CTkFrame):
 
         # Activar primera pestaña
         self.set_tab(self.ROW1_NAMES[0])
+
+    def _get_current_width(self):
+        try:
+            return int(float(self.cget("width")))
+        except (TypeError, ValueError):
+            return max(self.winfo_width(), self.DEFAULT_WIDTH)
+
+    def _get_width_bounds(self):
+        min_width = self.MIN_WIDTH
+        max_width = self.MAX_WIDTH
+
+        if self.master is not None:
+            parent_width = self.master.winfo_width()
+            if parent_width > (self.MIN_EDITOR_WIDTH + self.MIN_WIDTH):
+                max_width = min(max_width, parent_width - self.MIN_EDITOR_WIDTH)
+
+        if max_width < min_width:
+            max_width = min_width
+
+        return min_width, max_width
+
+    def _set_panel_width(self, width):
+        min_width, max_width = self._get_width_bounds()
+        clamped_width = max(min_width, min(max_width, int(width)))
+        current_width = self._get_current_width()
+
+        if clamped_width != current_width:
+            self.configure(width=clamped_width)
+
+    def _clamp_width_to_bounds(self):
+        self._set_panel_width(self._get_current_width())
+
+    def _on_parent_configure(self, _event):
+        self._clamp_width_to_bounds()
+
+    def _on_resize_start(self, event):
+        self._resize_start_x = event.x_root
+        self._resize_start_width = self._get_current_width()
+        self._resize_handle.configure(fg_color=self.colors["comments"])
+
+    def _on_resize_drag(self, event):
+        if self._resize_start_x is None:
+            return
+
+        delta = self._resize_start_x - event.x_root
+        self._set_panel_width(self._resize_start_width + delta)
+
+    def _on_resize_end(self, _event):
+        self._resize_start_x = None
+        self._resize_handle.configure(fg_color=self.colors["hover"])
+
+    def _on_resize_handle_enter(self, _event):
+        if self._resize_start_x is None:
+            self._resize_handle.configure(fg_color=self.colors["comments"])
+
+    def _on_resize_handle_leave(self, _event):
+        if self._resize_start_x is None:
+            self._resize_handle.configure(fg_color=self.colors["hover"])
 
     def _build_lexical_tab(self):
         content = self.get_tab_content("Léxico")
@@ -207,6 +296,7 @@ class RightPanel(ctk.CTkFrame):
     def show(self):
         """Muestra el panel."""
         if not self.visible:
+            self._clamp_width_to_bounds()
             self.pack(side=tk.RIGHT, fill=tk.Y)
             self.visible = True
 

@@ -126,27 +126,38 @@ class TestLexicalAnalyzer(unittest.TestCase):
         self.assertEqual(result.errors[0].lexeme, "@")
 
     def test_malformed_number_reports_error(self):
-        result = self.lexer.analyze("12abc")
+        result = self.lexer.analyze("12.")
         self.assertEqual(len(result.errors), 1)
-        self.assertIn("Numero mal formado", result.errors[0].message)
+        self.assertIn("mal formado", result.errors[0].message)
         self.assertEqual(result.errors[0].line, 1)
         self.assertEqual(result.errors[0].column, 1)
-        self.assertEqual(result.errors[0].lexeme, "12abc")
-        self.assertEqual(len(result.tokens), 1)
-        self.assertEqual(result.tokens[0].token_type, TokenType.UNKNOWN)
+        self.assertEqual(result.errors[0].lexeme, "12.")
+        self.assertEqual(len(result.tokens), 0)
 
     def test_malformed_decimal_number_consumes_full_lexeme(self):
         result = self.lexer.analyze("32.algo")
 
         self.assertEqual(len(result.tokens), 1)
-        self.assertEqual(result.tokens[0].token_type, TokenType.UNKNOWN)
-        self.assertEqual(result.tokens[0].lexeme, "32.algo")
+        self.assertEqual(result.tokens[0].token_type, TokenType.IDENTIFIER)
+        self.assertEqual(result.tokens[0].lexeme, "algo")
 
         self.assertEqual(len(result.errors), 1)
-        self.assertIn("Numero mal formado", result.errors[0].message)
+        self.assertIn("mal formado", result.errors[0].message)
         self.assertEqual(result.errors[0].line, 1)
         self.assertEqual(result.errors[0].column, 1)
-        self.assertEqual(result.errors[0].lexeme, "32.algo")
+        self.assertEqual(result.errors[0].lexeme, "32.")
+
+    def test_split_repeated_decimal_sections(self):
+        result = self.lexer.analyze("32.32.32.32")
+
+        self.assertEqual([token.lexeme for token in result.tokens], ["32.32", "32.32"])
+        self.assertTrue(all(token.token_type == TokenType.REAL for token in result.tokens))
+        self.assertTrue(all(token.token_type != TokenType.UNKNOWN for token in result.tokens))
+
+        self.assertEqual(len(result.errors), 1)
+        self.assertEqual(result.errors[0].line, 1)
+        self.assertEqual(result.errors[0].column, 6)
+        self.assertEqual(result.errors[0].lexeme, ".")
 
     def test_unclosed_multiline_comment_reports_error(self):
         result = self.lexer.analyze("/* sin cierre")
