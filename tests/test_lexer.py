@@ -46,7 +46,7 @@ class TestLexicalAnalyzer(unittest.TestCase):
         self.assertEqual(tokens[1].token_type, TokenType.COMMENT_MULTI)
 
     def test_arithmetic_relational_logical_assignment_and_symbols(self):
-        source = "+ - * / % ^ ++ -- < <= > >= != == && || ! = ( ) { } , ; \" '"
+        source = "+ - * / % ^ ++ -- < <= > >= != == && || ! ; = ( ) { } , ; \" '"
         tokens = self.lexer.tokenize(source)
         types = [t.token_type for t in tokens]
 
@@ -68,6 +68,7 @@ class TestLexicalAnalyzer(unittest.TestCase):
             TokenType.LOGICAL_OPERATOR,
             TokenType.LOGICAL_OPERATOR,
             TokenType.LOGICAL_OPERATOR,
+            TokenType.SYMBOL,
             TokenType.ASSIGNMENT,
             TokenType.SYMBOL,
             TokenType.SYMBOL,
@@ -79,6 +80,24 @@ class TestLexicalAnalyzer(unittest.TestCase):
             TokenType.SYMBOL,
         ]
         self.assertEqual(types, expected)
+
+    def test_longest_match_ignores_whitespace_for_multi_char_operators(self):
+        source = "a+\n+;"
+        tokens = self.lexer.tokenize(source)
+        lexeme_types = [(t.lexeme, t.token_type) for t in tokens]
+
+        self.assertEqual(lexeme_types, [
+            ("a", TokenType.IDENTIFIER),
+            ("++", TokenType.ARITHMETIC_OPERATOR),
+            (";", TokenType.SYMBOL),
+        ])
+
+    def test_longest_match_stops_at_statement_terminator(self):
+        source = "+\n;+\n+;"
+        tokens = self.lexer.tokenize(source)
+        lexemes = [t.lexeme for t in tokens]
+
+        self.assertEqual(lexemes, ["+", ";", "++", ";"])
 
     def test_logical_keywords(self):
         source = "and or not"
@@ -112,6 +131,22 @@ class TestLexicalAnalyzer(unittest.TestCase):
         self.assertIn("Numero mal formado", result.errors[0].message)
         self.assertEqual(result.errors[0].line, 1)
         self.assertEqual(result.errors[0].column, 1)
+        self.assertEqual(result.errors[0].lexeme, "12abc")
+        self.assertEqual(len(result.tokens), 1)
+        self.assertEqual(result.tokens[0].token_type, TokenType.UNKNOWN)
+
+    def test_malformed_decimal_number_consumes_full_lexeme(self):
+        result = self.lexer.analyze("32.algo")
+
+        self.assertEqual(len(result.tokens), 1)
+        self.assertEqual(result.tokens[0].token_type, TokenType.UNKNOWN)
+        self.assertEqual(result.tokens[0].lexeme, "32.algo")
+
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Numero mal formado", result.errors[0].message)
+        self.assertEqual(result.errors[0].line, 1)
+        self.assertEqual(result.errors[0].column, 1)
+        self.assertEqual(result.errors[0].lexeme, "32.algo")
 
     def test_unclosed_multiline_comment_reports_error(self):
         result = self.lexer.analyze("/* sin cierre")

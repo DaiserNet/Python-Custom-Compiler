@@ -54,6 +54,10 @@ class LexicalAnalyzer:
         "||": TokenType.LOGICAL_OPERATOR,
     }
 
+    MULTI_CHAR_TOKEN_LEXEMES = tuple(
+        sorted(MULTI_CHAR_TOKENS.keys(), key=len, reverse=True)
+    )
+
     SINGLE_CHAR_TOKENS = {
         "+": TokenType.ARITHMETIC_OPERATOR,
         "-": TokenType.ARITHMETIC_OPERATOR,
@@ -134,7 +138,7 @@ class LexicalAnalyzer:
                     if collect_errors:
                         errors.append(
                             LexicalError(
-                                message="Numero mal formado: no puede contener letras.",
+                                message="Numero mal formado: formato decimal invalido o contiene caracteres no permitidos.",
                                 line=start_line,
                                 column=start_column,
                                 lexeme=source[start:i],
@@ -190,22 +194,20 @@ class LexicalAnalyzer:
                         )
                     continue
 
-            if i + 1 < length:
-                maybe_multi = source[i : i + 2]
-                token_type = self.MULTI_CHAR_TOKENS.get(maybe_multi)
-                if token_type is not None:
-                    i, line, column = self._advance_sequence(source, i, line, column, 2)
-                    tokens.append(
-                        Token(
-                            token_type=token_type,
-                            lexeme=maybe_multi,
-                            start=start,
-                            end=i,
-                            line=start_line,
-                            column=start_column,
-                        )
+            multi_token_match = self._consume_multi_char_token(source, i, line, column)
+            if multi_token_match is not None:
+                lexeme, token_type, i, line, column = multi_token_match
+                tokens.append(
+                    Token(
+                        token_type=token_type,
+                        lexeme=lexeme,
+                        start=start,
+                        end=i,
+                        line=start_line,
+                        column=start_column,
                     )
-                    continue
+                )
+                continue
 
             if ch in self.SYMBOLS:
                 i, line, column = self._advance_sequence(source, i, line, column, 1)
@@ -335,18 +337,30 @@ class LexicalAnalyzer:
         is_real = False
         is_malformed = False
         if i < len(source) and source[i] == ".":
-            if i + 1 < len(source) and source[i + 1].isdigit():
+            i, line, column = self._advance_sequence(source, i, line, column, 1)
+            if i < len(source) and source[i].isdigit():
                 is_real = True
-                i, line, column = self._advance_sequence(source, i, line, column, 1)
                 while i < len(source) and source[i].isdigit():
                     i, line, column = self._advance_sequence(source, i, line, column, 1)
+            else:
+                # Keep the decimal point inside the malformed number lexeme (e.g. "32.").
+                is_malformed = True
 
         if i < len(source) and self._is_identifier_start(source[i]):
             is_malformed = True
             while i < len(source) and self._is_identifier_part(source[i]):
                 i, line, column = self._advance_sequence(source, i, line, column, 1)
 
+        if is_malformed:
+            # Extend malformed numbers to the longest invalid numeric-ish lexeme.
+            while i < len(source) and self._is_malformed_number_tail(source[i]):
+                i, line, column = self._advance_sequence(source, i, line, column, 1)
+
         return i, line, column, is_real, is_malformed
+
+    @staticmethod
+    def _is_malformed_number_tail(ch: str) -> bool:
+        return ch.isalnum() or ch in (".", "_")
 
     def _consume_single_line_comment(self, source: str, i: int, line: int, column: int):
         i, line, column = self._advance_sequence(source, i, line, column, 2)
@@ -365,8 +379,59 @@ class LexicalAnalyzer:
             i, line, column = self._advance_sequence(source, i, line, column, 1)
         return i, line, column, is_closed
 
+    def _consume_multi_char_token(self, source: str, i: int, line: int, column: int):
+        """Consume the longest multi-char token, ignoring inner whitespace."""
+        for token_lexeme in self.MULTI_CHAR_TOKEN_LEXEMES:
+            if source[i] != token_lexeme[0]:
+                continue
+
+            cursor_i = i
+            cursor_line = line
+            cursor_column = column
+            matched = True
+
+            for position, expected_char in enumerate(token_lexeme):
+                if cursor_i >= len(source) or source[cursor_i] != expected_char:
+                    matched = False
+                    break
+
+                cursor_i, cursor_line, cursor_column = self._advance_sequence(
+                    source,
+                    cursor_i,
+                    cursor_line,
+                    cursor_column,
+                    1,
+                )
+
+                if position == len(token_lexeme) - 1:
+                    continue
+
+                cursor_i, cursor_line, cursor_column = self._consume_optional_token_spacing(
+                    source,
+                    cursor_i,
+                    cursor_line,
+                    cursor_column,
+                )
+
+                # Longest-match search must stop at statement terminator.
+                if cursor_i >= len(source) or source[cursor_i] == ";":
+                    matched = False
+                    break
+
+            if matched:
+                token_type = self.MULTI_CHAR_TOKENS[token_lexeme]
+                return token_lexeme, token_type, cursor_i, cursor_line, cursor_column
+
+        return None
+
     @staticmethod
     def _consume_whitespace(source: str, i: int, line: int, column: int):
+        while i < len(source) and source[i].isspace():
+            i, line, column = LexicalAnalyzer._advance_sequence(source, i, line, column, 1)
+        return i, line, column
+
+    @staticmethod
+    def _consume_optional_token_spacing(source: str, i: int, line: int, column: int):
         while i < len(source) and source[i].isspace():
             i, line, column = LexicalAnalyzer._advance_sequence(source, i, line, column, 1)
         return i, line, column

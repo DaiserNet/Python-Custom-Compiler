@@ -13,6 +13,13 @@ class RightPanel(ctk.CTkFrame):
 
     ROW1_NAMES = ["Léxico", "Sintáctico", "Semántico"]
     ROW2_NAMES = ["Hash Table", "Cód. Intermedio"]
+    MAX_VISIBLE_TOKENS = 400
+
+    TABLE_INDEX_WIDTH = 4
+    TABLE_TYPE_WIDTH = 18
+    TABLE_LEXEME_WIDTH = 30
+    TABLE_LINE_WIDTH = 5
+    TABLE_COLUMN_WIDTH = 7
 
     def __init__(self, parent, colors, **kwargs):
         super().__init__(
@@ -105,6 +112,52 @@ class RightPanel(ctk.CTkFrame):
         textbox.insert("1.0", content)
         textbox.configure(state="disabled")
 
+    @staticmethod
+    def _truncate_cell(value, width):
+        if len(value) <= width:
+            return value
+        if width <= 3:
+            return value[:width]
+        return f"{value[:width - 3]}..."
+
+    def _format_lexical_trace(self, tokens):
+        header = (
+            f"{'#':>{self.TABLE_INDEX_WIDTH}} | "
+            f"{'TIPO':<{self.TABLE_TYPE_WIDTH}} | "
+            f"{'LEXEMA':<{self.TABLE_LEXEME_WIDTH}} | "
+            f"{'LINEA':>{self.TABLE_LINE_WIDTH}} | "
+            f"{'COLUMNA':>{self.TABLE_COLUMN_WIDTH}}"
+        )
+        separator = "-" * len(header)
+
+        lines = [
+            "Tokens",
+            f"Tokens mostrados: {len(tokens)}",
+            "",
+            header,
+            separator,
+        ]
+
+        for idx, token in enumerate(tokens[:self.MAX_VISIBLE_TOKENS], start=1):
+            token_type = self._truncate_cell(str(token.token_type.value), self.TABLE_TYPE_WIDTH)
+            escaped_lexeme = token.lexeme.replace("\n", "\\n").replace("\t", "\\t")
+            lexeme = self._truncate_cell(f"'{escaped_lexeme}'", self.TABLE_LEXEME_WIDTH)
+
+            lines.append(
+                f"{idx:>{self.TABLE_INDEX_WIDTH}} | "
+                f"{token_type:<{self.TABLE_TYPE_WIDTH}} | "
+                f"{lexeme:<{self.TABLE_LEXEME_WIDTH}} | "
+                f"{token.line:>{self.TABLE_LINE_WIDTH}} | "
+                f"{token.column:>{self.TABLE_COLUMN_WIDTH}}"
+            )
+
+        if len(tokens) > self.MAX_VISIBLE_TOKENS:
+            omitted = len(tokens) - self.MAX_VISIBLE_TOKENS
+            lines.append("")
+            lines.append(f"... {omitted} tokens omitidos ...")
+
+        return "\n".join(lines)
+
     def _get_lexical_trace_text_widget(self):
         """Return the underlying tk.Text used by CTkTextbox for tag operations."""
         if self._lexical_trace_box is None:
@@ -185,63 +238,20 @@ class RightPanel(ctk.CTkFrame):
             return
 
         tokens = getattr(analysis_result, "tokens", [])
-        errors = getattr(analysis_result, "errors", [])
         filtered_tokens = [
             token for token in tokens
             if token.token_type not in (TokenType.COMMENT_SINGLE, TokenType.COMMENT_MULTI)
         ]
+        content = self._format_lexical_trace(filtered_tokens)
 
         text_widget = self._get_lexical_trace_text_widget()
         if text_widget is None:
-            lines = [
-                "Tokens",
-                f"Tokens mostrados: {len(filtered_tokens)}",
-                f"Errores lexicos: {len(errors)}",
-                "",
-                "Secuencia",
-            ]
-            for idx, token in enumerate(filtered_tokens[:400], start=1):
-                lexeme = token.lexeme.replace("\n", "\\n").replace("\t", "\\t")
-                lines.append(
-                    f"{idx}. {token.token_type.value} | '{lexeme}' | linea {token.line}, columna {token.column}"
-                )
-            self._set_textbox_value(self._lexical_trace_box, "\n".join(lines))
+            self._set_textbox_value(self._lexical_trace_box, content)
             return
 
         text_widget.configure(state="normal")
         text_widget.delete("1.0", tk.END)
-        text_widget.tag_configure("trace_error", foreground="#ff5555")
 
-        text_widget.insert(tk.END, "Tokens\n")
-        text_widget.insert(tk.END, f"Tokens mostrados: {len(filtered_tokens)}\n")
-        text_widget.insert(tk.END, f"Errores lexicos: {len(errors)}\n\n")
-
-        if errors:
-            text_widget.insert(tk.END, "Errores detectados\n", ("trace_error",))
-            for idx, error in enumerate(errors, start=1):
-                lexeme = getattr(error, "lexeme", "").replace("\n", "\\n").replace("\t", "\\t")
-                line = getattr(error, "line", 0)
-                column = getattr(error, "column", 0)
-                message = getattr(error, "message", "Error lexico")
-                text_widget.insert(
-                    tk.END,
-                    f"{idx}. linea {line}, columna {column}: {message} [lexema: {lexeme}]\n",
-                    ("trace_error",),
-                )
-            text_widget.insert(tk.END, "\n")
-
-        text_widget.insert(tk.END, "Secuencia\n")
-        max_tokens = 400
-        for idx, token in enumerate(filtered_tokens[:max_tokens], start=1):
-            lexeme = token.lexeme.replace("\n", "\\n").replace("\t", "\\t")
-            line = f"{idx}. {token.token_type.value} | '{lexeme}' | linea {token.line}, columna {token.column}\n"
-            if token.token_type == TokenType.UNKNOWN:
-                text_widget.insert(tk.END, line, ("trace_error",))
-            else:
-                text_widget.insert(tk.END, line)
-
-        if len(filtered_tokens) > max_tokens:
-            omitted = len(filtered_tokens) - max_tokens
-            text_widget.insert(tk.END, f"... {omitted} tokens omitidos ...\n")
+        text_widget.insert(tk.END, content)
 
         text_widget.configure(state="disabled")

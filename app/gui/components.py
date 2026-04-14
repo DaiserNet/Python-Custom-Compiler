@@ -176,7 +176,9 @@ class CodeEditorFrame(ctk.CTkFrame):
             index = self._error_to_text_index(error)
             if index is None:
                 continue
-            end_index = self.text.index(f"{index}+1c")
+            lexeme = str(getattr(error, "lexeme", "") or "")
+            mark_len = max(len(lexeme), 1)
+            end_index = self.text.index(f"{index}+{mark_len}c")
             self.text.tag_add("lexical_error_marker", index, end_index)
 
         # Keep lexical errors visually above syntax colors.
