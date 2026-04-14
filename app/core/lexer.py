@@ -1,3 +1,4 @@
+# core/lexer.py
 from typing import List
 from typing import Tuple
 
@@ -132,9 +133,9 @@ class LexicalAnalyzer:
 
             if ch.isdigit():
                 i, line, column, is_real, is_malformed = self._consume_number(source, i, line, column)
-                token_type = TokenType.REAL if is_real else TokenType.INTEGER
+                
                 if is_malformed:
-                    token_type = TokenType.UNKNOWN
+                    # Solo se agrega a la lista de errores, NO a los tokens.
                     if collect_errors:
                         errors.append(
                             LexicalError(
@@ -144,16 +145,18 @@ class LexicalAnalyzer:
                                 lexeme=source[start:i],
                             )
                         )
-                tokens.append(
-                    Token(
-                        token_type=token_type,
-                        lexeme=source[start:i],
-                        start=start,
-                        end=i,
-                        line=start_line,
-                        column=start_column,
+                else:
+                    token_type = TokenType.REAL if is_real else TokenType.INTEGER
+                    tokens.append(
+                        Token(
+                            token_type=token_type,
+                            lexeme=source[start:i],
+                            start=start,
+                            end=i,
+                            line=start_line,
+                            column=start_column,
+                        )
                     )
-                )
                 continue
 
             if ch == "/" and i + 1 < length:
@@ -225,16 +228,7 @@ class LexicalAnalyzer:
 
             if ch in ("&", "|"):
                 i, line, column = self._advance_sequence(source, i, line, column, 1)
-                tokens.append(
-                    Token(
-                        token_type=TokenType.UNKNOWN,
-                        lexeme=ch,
-                        start=start,
-                        end=i,
-                        line=start_line,
-                        column=start_column,
-                    )
-                )
+                # Omitido de la lista de tokens, se reporta como error directo.
                 if collect_errors:
                     errors.append(
                         LexicalError(
@@ -261,17 +255,9 @@ class LexicalAnalyzer:
                 )
                 continue
 
+            # Para cualquier caracter no reconocido
             i, line, column = self._advance_sequence(source, i, line, column, 1)
-            tokens.append(
-                Token(
-                    token_type=TokenType.UNKNOWN,
-                    lexeme=ch,
-                    start=start,
-                    end=i,
-                    line=start_line,
-                    column=start_column,
-                )
-            )
+            # Omitido de la lista de tokens, solo se reporta el error.
             if collect_errors:
                 errors.append(
                     LexicalError(
@@ -336,20 +322,21 @@ class LexicalAnalyzer:
 
         is_real = False
         is_malformed = False
+        
         if i < len(source) and source[i] == ".":
             i, line, column = self._advance_sequence(source, i, line, column, 1)
             if i < len(source) and source[i].isdigit():
                 is_real = True
+                i, line, column = self._advance_sequence(source, i, line, column, 1) # Consumir el '.'
                 while i < len(source) and source[i].isdigit():
                     i, line, column = self._advance_sequence(source, i, line, column, 1)
             else:
-                # Keep the decimal point inside the malformed number lexeme (e.g. "32.").
+                # Caso para un número mal formado como "32."
                 is_malformed = True
-
-        if i < len(source) and self._is_identifier_start(source[i]):
-            is_malformed = True
-            while i < len(source) and self._is_identifier_part(source[i]):
-                i, line, column = self._advance_sequence(source, i, line, column, 1)
+                i, line, column = self._advance_sequence(source, i, line, column, 1) # Consumir el '.'
+                
+        # Se ha eliminado el bloque "_is_identifier_start" para que no consuma
+        # identificadores adjuntos (ej. la palabra "algo" en "32.algo").
 
         if is_malformed:
             # Extend malformed numbers to the longest invalid numeric-ish lexeme.
