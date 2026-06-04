@@ -20,6 +20,9 @@ class LexicalAnalyzer:
         "while",
         "switch",
         "case",
+        "then",
+        "true",
+        "false",
         "int",
         "float",
         "bool",
@@ -41,8 +44,6 @@ class LexicalAnalyzer:
         "}",
         ",",
         ";",
-        '"',
-        "'",
     }
 
     MULTI_CHAR_TOKENS = {
@@ -207,6 +208,32 @@ class LexicalAnalyzer:
                         column=start_column,
                     )
                 )
+                continue
+
+            # String literal scanning (only double quotes)
+            if ch == '"':
+                i, line, column, is_closed = self._consume_string(source, i, line, column)
+                if is_closed:
+                    tokens.append(
+                        Token(
+                            token_type=TokenType.STRING,
+                            lexeme=source[start:i],
+                            start=start,
+                            end=i,
+                            line=start_line,
+                            column=start_column,
+                        )
+                    )
+                else:
+                    if collect_errors:
+                        errors.append(
+                            LexicalError(
+                                message="Cadena de texto sin cierre.",
+                                line=start_line,
+                                column=start_column,
+                                lexeme=source[start:i],
+                            )
+                        )
                 continue
 
             if ch in self.SYMBOLS:
@@ -385,6 +412,22 @@ class LexicalAnalyzer:
             if source[i] == "*" and i + 1 < len(source) and source[i + 1] == "/":
                 i, line, column = self._advance_sequence(source, i, line, column, 2)
                 is_closed = True
+                break
+            i, line, column = self._advance_sequence(source, i, line, column, 1)
+        return i, line, column, is_closed
+
+    def _consume_string(self, source: str, i: int, line: int, column: int):
+        """Consume a double-quoted string literal."""
+        # Skip the opening quote
+        i, line, column = self._advance_sequence(source, i, line, column, 1)
+        is_closed = False
+        while i < len(source):
+            if source[i] == '"':
+                i, line, column = self._advance_sequence(source, i, line, column, 1)
+                is_closed = True
+                break
+            if source[i] == '\n':
+                # Strings cannot span multiple lines
                 break
             i, line, column = self._advance_sequence(source, i, line, column, 1)
         return i, line, column, is_closed

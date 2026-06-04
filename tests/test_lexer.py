@@ -46,7 +46,7 @@ class TestLexicalAnalyzer(unittest.TestCase):
         self.assertEqual(tokens[1].token_type, TokenType.COMMENT_MULTI)
 
     def test_arithmetic_relational_logical_assignment_and_symbols(self):
-        source = "+ - * / % ^ ++ -- < <= > >= != == && || ! ; = ( ) { } , ; \" '"
+        source = "+ - * / % ^ ++ -- < <= > >= != == && || ! ; = ( ) { } , ;"
         tokens = self.lexer.tokenize(source)
         types = [t.token_type for t in tokens]
 
@@ -70,8 +70,6 @@ class TestLexicalAnalyzer(unittest.TestCase):
             TokenType.LOGICAL_OPERATOR,
             TokenType.SYMBOL,
             TokenType.ASSIGNMENT,
-            TokenType.SYMBOL,
-            TokenType.SYMBOL,
             TokenType.SYMBOL,
             TokenType.SYMBOL,
             TokenType.SYMBOL,
@@ -171,6 +169,86 @@ class TestLexicalAnalyzer(unittest.TestCase):
         self.assertEqual(len(result.line_traces), 2)
         self.assertEqual(result.line_traces[0].line_number, 1)
         self.assertGreater(len(result.line_traces[0].token_summaries), 0)
+
+
+class TestNewKeywords(unittest.TestCase):
+    def setUp(self):
+        self.lexer = LexicalAnalyzer()
+
+    def test_then_is_keyword(self):
+        tokens = self.lexer.tokenize("then")
+        self.assertEqual(len(tokens), 1)
+        self.assertEqual(tokens[0].token_type, TokenType.KEYWORD)
+        self.assertEqual(tokens[0].lexeme, "then")
+
+    def test_true_is_keyword(self):
+        tokens = self.lexer.tokenize("true")
+        self.assertEqual(len(tokens), 1)
+        self.assertEqual(tokens[0].token_type, TokenType.KEYWORD)
+        self.assertEqual(tokens[0].lexeme, "true")
+
+    def test_false_is_keyword(self):
+        tokens = self.lexer.tokenize("false")
+        self.assertEqual(len(tokens), 1)
+        self.assertEqual(tokens[0].token_type, TokenType.KEYWORD)
+        self.assertEqual(tokens[0].lexeme, "false")
+
+
+class TestStringTokens(unittest.TestCase):
+    def setUp(self):
+        self.lexer = LexicalAnalyzer()
+
+    def test_simple_string_literal(self):
+        tokens = self.lexer.tokenize('"hello world"')
+        self.assertEqual(len(tokens), 1)
+        self.assertEqual(tokens[0].token_type, TokenType.STRING)
+        self.assertEqual(tokens[0].lexeme, '"hello world"')
+
+    def test_empty_string_literal(self):
+        tokens = self.lexer.tokenize('""')
+        self.assertEqual(len(tokens), 1)
+        self.assertEqual(tokens[0].token_type, TokenType.STRING)
+        self.assertEqual(tokens[0].lexeme, '""')
+
+    def test_string_with_numbers_and_symbols(self):
+        tokens = self.lexer.tokenize('"abc 123 !@#"')
+        self.assertEqual(len(tokens), 1)
+        self.assertEqual(tokens[0].token_type, TokenType.STRING)
+        self.assertEqual(tokens[0].lexeme, '"abc 123 !@#"')
+
+    def test_unclosed_string_reports_error(self):
+        result = self.lexer.analyze('"unclosed string')
+        self.assertEqual(len(result.tokens), 0)
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("sin cierre", result.errors[0].message)
+        self.assertEqual(result.errors[0].line, 1)
+        self.assertEqual(result.errors[0].column, 1)
+        self.assertEqual(result.errors[0].lexeme, '"unclosed string')
+
+    def test_unclosed_string_at_newline(self):
+        result = self.lexer.analyze('"no close\nint x')
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("sin cierre", result.errors[0].message)
+        # Tokens after the newline should still be scanned
+        keywords = [t for t in result.tokens if t.token_type == TokenType.KEYWORD]
+        self.assertEqual(len(keywords), 1)
+        self.assertEqual(keywords[0].lexeme, "int")
+
+    def test_single_quotes_are_not_valid_strings(self):
+        result = self.lexer.analyze("'text'")
+        # Single quotes should NOT produce STRING tokens
+        string_tokens = [t for t in result.tokens if t.token_type == TokenType.STRING]
+        self.assertEqual(len(string_tokens), 0)
+        # They should produce errors (unknown characters)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_string_position_tracking(self):
+        tokens = self.lexer.tokenize('int x = "hello";')
+        string_tokens = [t for t in tokens if t.token_type == TokenType.STRING]
+        self.assertEqual(len(string_tokens), 1)
+        self.assertEqual(string_tokens[0].lexeme, '"hello"')
+        self.assertEqual(string_tokens[0].line, 1)
+        self.assertEqual(string_tokens[0].column, 9)
 
 
 if __name__ == "__main__":

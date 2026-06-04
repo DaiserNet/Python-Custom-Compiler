@@ -5,6 +5,7 @@ from app.core.tokens import LexicalLineTrace
 from app.core.tokens import Token
 from app.core.tokens import TokenType
 from app.core.tokens import token_color_group
+from app.core.parser import ASTNode, ChimeraParser, SyntaxErrorResult, SyntacticResult
 
 __all__ = [
 	"LexicalAnalyzer",
@@ -14,6 +15,9 @@ __all__ = [
 	"Token",
 	"TokenType",
 	"token_color_group",
+    "ASTNode",
     "SyntaxErrorResult",
+    "SyntacticResult",
     "ChimeraParser",
 ]
+

@@ -1,5 +1,5 @@
 from app.core.lexer import LexicalAnalyzer
-from app.core.parser import ChimeraParser, SyntaxErrorResult
+from app.core.parser import ChimeraParser, SyntaxErrorResult, SyntacticResult
 
 
 class CompilerEngine:

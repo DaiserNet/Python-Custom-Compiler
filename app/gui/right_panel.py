@@ -3,6 +3,7 @@ from tkinter import ttk
 import customtkinter as ctk
 
 from app.core.tokens import TokenType
+from app.core.parser import ASTNode
 
 
 class RightPanel(ctk.CTkFrame):
@@ -397,9 +398,9 @@ class RightPanel(ctk.CTkFrame):
         self._tree_view.insert("", "end", text="Sin análisis sintáctico ejecutado.")
 
     def set_syntactic_tree(self, tree_data):
-        """Renderiza el árbol sintáctico. 
-        
-        Puede recibir un objeto Tree de Lark o un string con un mensaje de error.
+        """Renderiza el árbol sintáctico AST.
+
+        Puede recibir un objeto ASTNode o un string con un mensaje de error.
         """
         if getattr(self, "_tree_view", None) is None:
             return
@@ -412,27 +413,33 @@ class RightPanel(ctk.CTkFrame):
             self._tree_view.insert("", "end", text=tree_data)
             return
 
-        # Si es un objeto nodo válido de Lark, lo poblamos recursivamente
-        if tree_data is not None:
+        # Si es un objeto ASTNode válido, lo poblamos recursivamente
+        if isinstance(tree_data, ASTNode):
             self._populate_tree_node("", tree_data)
+        elif tree_data is not None:
+            # Fallback para cualquier otro tipo de nodo
+            self._tree_view.insert("", "end", text=str(tree_data))
         else:
             self._tree_view.insert("", "end", text="Árbol vacío o inválido.")
 
     def _populate_tree_node(self, parent_id, node):
-        """Método auxiliar recursivo para desglosar el árbol de Lark en el Treeview."""
-        # Si el nodo es una regla intermedia de Lark (objeto Tree)
-        if hasattr(node, "data"):
-            # Insertamos la regla gramatical (ej: 'programa', 'declaracion') abierta por defecto
-            current_id = self._tree_view.insert(parent_id, "end", text=str(node.data), open=True)
-            
-            # Recorremos recursivamente todos sus hijos
-            for child in node.children:
-                self._populate_tree_node(current_id, child)
-        else:
-            # Si es una hoja final (un Token de Lark o un string puro)
-            token_text = str(node)
-            if hasattr(node, "type"):
-                # Formateamos el token para que muestre el Tipo y su Lexema: "ID: x"
-                token_text = f"{node.type}: {node.value}"
-            
-            self._tree_view.insert(parent_id, "end", text=token_text)
+        """Método recursivo para renderizar un ASTNode en el Treeview colapsable."""
+        if not isinstance(node, ASTNode):
+            # Nodo no reconocido — insertar como texto plano
+            self._tree_view.insert(parent_id, "end", text=str(node))
+            return
+
+        # Construir la etiqueta del nodo
+        label = node.node_type
+        if node.value is not None:
+            label = f"{node.node_type}: {node.value}"
+
+        # Los nodos con hijos se abren por defecto para ver la estructura
+        has_children = len(node.children) > 0
+        current_id = self._tree_view.insert(
+            parent_id, "end", text=label, open=has_children
+        )
+
+        # Recorrer recursivamente todos los hijos
+        for child in node.children:
+            self._populate_tree_node(current_id, child)
