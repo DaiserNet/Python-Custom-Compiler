@@ -583,15 +583,23 @@ class MainWindow:
         if not self._is_maximized:
             self._normal_geometry = self.root.geometry()
             try:
-                self.root.state("zoomed")
-            except Exception:
-                pass
+                import ctypes, struct
+                rect = ctypes.create_string_buffer(16)
+                ctypes.windll.user32.SystemParametersInfoA(48, 0, rect, 0)
+                left, top, right, bottom = struct.unpack("llll", rect.raw)
+                
+                scaling = self.root._get_window_scaling()
+                w = int((right - left) / scaling)
+                h = int((bottom - top) / scaling)
+                x = int(left / scaling)
+                y = int(top / scaling)
+                
+                self.root.geometry(f"{w}x{h}+{x}+{y}")
+            except Exception as e:
+                print("Error maximizando:", e)
+                self.root.geometry(f"{self.root.winfo_screenwidth()}x{self.root.winfo_screenheight()}+0+0")
             self._is_maximized = True
         else:
-            try:
-                self.root.state("normal")
-            except Exception:
-                pass
             self.root.geometry(self._normal_geometry)
             self._is_maximized = False
 
