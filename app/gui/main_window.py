@@ -318,9 +318,14 @@ class MainWindow:
             syn_result = self.compiler_engine.analyze_syntactically(lex_result.tokens)
             
             if syn_result.errors:
-                # Falló el análisis sintáctico
+                # Mostrar errores en el panel inferior
                 self.bottom_panel.set_syntactic_errors(syn_result.errors)
-                self.right_panel.set_syntactic_tree("Análisis abortado por errores de sintaxis.")
+                
+                # Mostrar el árbol AST (que contendrá los nodos de Error_Sintactico)
+                if syn_result.tree:
+                    self.right_panel.set_syntactic_tree(syn_result.tree)
+                else:
+                    self.right_panel.set_syntactic_tree("Análisis abortado por errores de sintaxis irrecuperables.")
                 
                 if self._manual_run_triggered:
                     self.bottom_panel.set_tab("Error Sintáctico")

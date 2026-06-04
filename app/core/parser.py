@@ -413,7 +413,7 @@ class ChimeraParser:
             return ASTNode("Tipo", value=tok.lexeme, line=tok.line, column=tok.column)
 
         self._error_expected("tipo (int, float, real, bool)")
-        return ASTNode("Tipo", value="<error>", line=tok.line if tok else 1, column=tok.column if tok else 1)
+        return ASTNode("Error_Sintactico: Expresion Invalida", value="<error_tipo>", line=tok.line if tok else 1, column=tok.column if tok else 1)
 
     def _identificador_lista(self) -> List[ASTNode]:
         """identificador → id | identificador , id
@@ -782,7 +782,7 @@ class ChimeraParser:
         tok = self._current()
         if tok is None:
             self._error("Se esperaba una expresión, pero se llegó al final del archivo.")
-            return ASTNode("Error", value="<EOF>", line=1, column=1)
+            return ASTNode("Error_Sintactico: Expresion Invalida", value="<EOF>", line=1, column=1)
 
         # Operador lógico unario prefijo: !
         if tok.lexeme in self._UNARY_LOGICAL_OPS:
@@ -825,7 +825,7 @@ class ChimeraParser:
         # Ningún componente válido
         self._error(f"Se esperaba un valor o expresión, se encontró '{tok.lexeme}'.")
         self._advance()  # Avanzar para no quedar en bucle infinito
-        return ASTNode("Error", value=tok.lexeme, line=tok.line, column=tok.column)
+        return ASTNode("Error_Sintactico: Expresion Invalida", value=tok.lexeme, line=tok.line, column=tok.column)
 
 
 # ======================================================================
