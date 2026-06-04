@@ -77,6 +77,7 @@ class BottomPanel(ctk.CTkFrame):
 
         # Contenido de pestañas de analisis
         self._build_lexical_error_tab()
+        self._build_syntactic_error_tab()
 
         # Activar primera pestaña
         self.set_tab(self.TAB_NAMES[0])
@@ -184,3 +185,57 @@ class BottomPanel(ctk.CTkFrame):
             )
 
         self._set_textbox_value(self._lexical_error_box, "\n".join(lines))
+
+    def _build_syntactic_error_tab(self):
+        content = self.get_tab_content("Error Sintáctico")
+        if content is None:
+            return
+
+        header = ctk.CTkLabel(
+            content,
+            text="Errores detectados por el analizador sintáctico",
+            text_color=self.colors["comments"],
+            anchor="w",
+            font=("Segoe UI", 11),
+        )
+        header.pack(fill=tk.X, padx=8, pady=(8, 4))
+
+        self._syntactic_error_box = ctk.CTkTextbox(
+            content,
+            fg_color=self.colors["bg"],
+            text_color="#e81123",  # Color rojo para resaltar que es un error
+            border_width=0,
+            corner_radius=0,
+            wrap="none",
+            font=("Consolas", 11),
+        )
+        self._syntactic_error_box.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        self._set_textbox_value(self._syntactic_error_box, "Sin análisis sintáctico ejecutado.")
+
+    def set_syntactic_errors(self, errors):
+        """Renderiza los errores sintácticos en la consola inferior."""
+        if getattr(self, "_syntactic_error_box", None) is None:
+            return
+
+        if not errors:
+            self._set_textbox_value(self._syntactic_error_box, "Sin errores sintácticos. Árbol AST generado con éxito.")
+            return
+
+        lines = []
+        for idx, error in enumerate(errors, start=1):
+            # Adaptar según cómo estructures tus objetos de error sintáctico en parser.py
+            if isinstance(error, dict):
+                line = error.get("line", "?")
+                column = error.get("column", "?")
+                message = error.get("message", "Error de sintaxis")
+            else:
+                line = getattr(error, "line", "?")
+                column = getattr(error, "column", "?")
+                message = getattr(error, "message", "Error de sintaxis")
+
+            lines.append(f"{idx}. Línea {line}, columna {column}: {message}")
+
+        self._set_textbox_value(self._syntactic_error_box, "\n".join(lines))
+        # Opcional: Mostrar el panel inferior automáticamente si hay errores
+        self.show()
+        self.set_tab("Error Sintáctico")

@@ -145,7 +145,7 @@ class MainWindow:
         self.right_panel.pack_forget()
 
         # Lanzar analisis inicial para sincronizar paneles
-        self._schedule_lexical_analysis(delay_ms=0)
+        self._schedule_analysis(delay_ms=0)
 
         
 
@@ -177,7 +177,7 @@ class MainWindow:
             # Opcional: mostrar extensión del archivo
             ext = os.path.splitext(tab_name)[1] or "Texto"
             self.status_bar.update_file_type(ext)
-        self._schedule_lexical_analysis(delay_ms=0)
+        self._schedule_analysis(delay_ms=0)
 
 
     # ------------------------------------------------------------------
@@ -223,7 +223,7 @@ class MainWindow:
         # Actualizar editor actual y barra de estado
         self.current_editor = editor
         self._update_status_from_editor()
-        self._schedule_lexical_analysis(delay_ms=0)
+        self._schedule_analysis(delay_ms=0)
 
     # ==================================================================
     # Gestión de paneles laterales
@@ -256,46 +256,114 @@ class MainWindow:
         if not self.right_panel.visible:
             self.right_panel.show()
 
+        # Reseteamos la vista a la primera etapa de la compilación
         self.bottom_panel.set_tab("Error Léxico")
         self.right_panel.set_tab("Léxico")
-        self._focus_first_lexical_error_pending = True
-        self._schedule_lexical_analysis(delay_ms=0)
+        
+        # Usamos esta bandera para saber si el usuario presionó el botón explícitamente
+        self._manual_run_triggered = True 
+        self._schedule_analysis(delay_ms=0)
 
     def _on_editor_text_change(self, editor, _content):
         if editor is self.current_editor:
-            self._schedule_lexical_analysis(delay_ms=140)
+            self._manual_run_triggered = False
+            self._schedule_analysis(delay_ms=140)
 
-    def _schedule_lexical_analysis(self, delay_ms=140):
+    def _schedule_analysis(self, delay_ms=140):
         if self._lexical_analysis_after_id is not None:
             try:
                 self.root.after_cancel(self._lexical_analysis_after_id)
             except Exception:
                 pass
-        self._lexical_analysis_after_id = self.root.after(delay_ms, self._run_lexical_analysis)
-
-    def _run_lexical_analysis(self):
+        self._lexical_analysis_after_id = self.root.after(delay_ms, self._run_analysis_pipeline)
+        
+    def _run_analysis_pipeline(self):
         self._lexical_analysis_after_id = None
         if not hasattr(self, "bottom_panel") or not hasattr(self, "right_panel"):
             return
 
+        # 0. MANEJO DE EDITOR VACÍO / CERRADO
         if self.current_editor is None:
             self.bottom_panel.set_lexical_errors([])
+            self.bottom_panel.set_syntactic_errors([])
             self.right_panel.set_lexical_trace(None)
+            self.right_panel.set_syntactic_tree("Sin análisis ejecutado.")
             self._persist_lexical_outputs([], [])
-            self._focus_first_lexical_error_pending = False
+            self._manual_run_triggered = False
             return
 
         source = self.current_editor.text.get("1.0", "end-1c")
-        result = self.compiler_engine.analyze_lexically(source)
-        self.current_editor.apply_lexical_errors(result.errors)
-        self.bottom_panel.set_lexical_errors(result.errors)
-        self.right_panel.set_lexical_trace(result)
-        self._persist_lexical_outputs(result.tokens, result.errors)
 
-        if self._focus_first_lexical_error_pending and result.errors:
-            self.current_editor.focus_on_lexical_error(result.errors[0])
+        # ==========================================
+        # 1. ANÁLISIS LÉXICO
+        # ==========================================
+        lex_result = self.compiler_engine.analyze_lexically(source)
+        
+        self.current_editor.apply_lexical_errors(lex_result.errors)
+        self.bottom_panel.set_lexical_errors(lex_result.errors)
+        self.right_panel.set_lexical_trace(lex_result)
+        self._persist_lexical_outputs(lex_result.tokens, lex_result.errors)
 
-        self._focus_first_lexical_error_pending = False
+        if self._manual_run_triggered and lex_result.errors:
+            self.current_editor.focus_on_lexical_error(lex_result.errors[0])
+            self.bottom_panel.set_tab("Error Léxico")
+
+        # ==========================================
+        # 2. ANÁLISIS SINTÁCTICO
+        # ==========================================
+        # Solo ejecutamos el Parser si el Lexer fue exitoso (sin errores)
+        if not lex_result.errors:
+            # NOTA: Asegúrate de que el método en tu compiler_engine se llame así 
+            # y de que tu parser retorne un objeto con 'errors' y algún método para el AST.
+            syn_result = self.compiler_engine.analyze_syntactically(lex_result.tokens)
+            
+            if syn_result.errors:
+                # Falló el análisis sintáctico
+                self.bottom_panel.set_syntactic_errors(syn_result.errors)
+                self.right_panel.set_syntactic_tree("Análisis abortado por errores de sintaxis.")
+                
+                if self._manual_run_triggered:
+                    self.bottom_panel.set_tab("Error Sintáctico")
+            else:
+                # Éxito total: Léxico y Sintáctico limpios
+                self.bottom_panel.set_syntactic_errors([])
+                
+                # Suponiendo que syn_result tiene un método o atributo para obtener el árbol en string
+                self.right_panel.set_syntactic_tree(syn_result.tree)
+                
+                if self._manual_run_triggered:
+                    self.right_panel.set_tab("Sintáctico")
+        else:
+            # Si hubo errores léxicos, no tiene sentido parsear basura. Limpiamos los paneles.
+            self.bottom_panel.set_syntactic_errors([])
+            self.right_panel.set_syntactic_tree("Esperando corrección de errores léxicos...")
+
+        # Reiniciamos la bandera al terminar el pipeline
+        self._manual_run_triggered = False
+
+    # def _run_lexical_analysis(self):
+    #     self._lexical_analysis_after_id = None
+    #     if not hasattr(self, "bottom_panel") or not hasattr(self, "right_panel"):
+    #         return
+
+    #     if self.current_editor is None:
+    #         self.bottom_panel.set_lexical_errors([])
+    #         self.right_panel.set_lexical_trace(None)
+    #         self._persist_lexical_outputs([], [])
+    #         self._focus_first_lexical_error_pending = False
+    #         return
+
+    #     source = self.current_editor.text.get("1.0", "end-1c")
+    #     result = self.compiler_engine.analyze_lexically(source)
+    #     self.current_editor.apply_lexical_errors(result.errors)
+    #     self.bottom_panel.set_lexical_errors(result.errors)
+    #     self.right_panel.set_lexical_trace(result)
+    #     self._persist_lexical_outputs(result.tokens, result.errors)
+
+    #     if self._focus_first_lexical_error_pending and result.errors:
+    #         self.current_editor.focus_on_lexical_error(result.errors[0])
+
+    #     self._focus_first_lexical_error_pending = False
 
     def _persist_lexical_outputs(self, tokens, errors):
         filtered_tokens = [

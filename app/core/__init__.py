@@ -14,4 +14,6 @@ __all__ = [
 	"Token",
 	"TokenType",
 	"token_color_group",
+    "SyntaxErrorResult",
+    "ChimeraParser",
 ]

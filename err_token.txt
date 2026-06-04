@@ -1,4 +1,2 @@
 # idx	line	column	lexeme	message
-1	1	9	@	Caracter invalido o token no reconocido.
-2	1	25	32.	Número mal formado.
-3	2	6	.	Caracter invalido o token no reconocido.
+Sin errores lexicos.

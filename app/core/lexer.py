@@ -22,6 +22,7 @@ class LexicalAnalyzer:
         "case",
         "int",
         "float",
+        "bool",
         "main",
         "cin",
         "cout",

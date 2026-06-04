@@ -1,5 +1,5 @@
 ('D:\\Documentos\\DiegoCopD\\TAREAS UAA\\OCTAVO '
- 'SEMESTRE\\COMPILADORES\\Project\\Python-Custom-Compiler\\build\\main\\PYZ-00.pyz',
+ 'SEMESTRE\\COMPILADORES\\Project\\Python-Custom-Compiler\\build\\Chimera\\PYZ-00.pyz',
  [('__future__', 'c:\\python312\\Lib\\__future__.py', 'PYMODULE'),
   ('_compat_pickle', 'c:\\python312\\Lib\\_compat_pickle.py', 'PYMODULE'),
   ('_compression', 'c:\\python312\\Lib\\_compression.py', 'PYMODULE'),

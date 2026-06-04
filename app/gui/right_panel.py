@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import ttk
 import customtkinter as ctk
 
 from app.core.tokens import TokenType
@@ -106,6 +107,7 @@ class RightPanel(ctk.CTkFrame):
 
         # Contenido del analisis lexico
         self._build_lexical_tab()
+        self._build_syntactic_tab()
 
         # Activar primera pestaña
         self.set_tab(self.ROW1_NAMES[0])
@@ -345,3 +347,92 @@ class RightPanel(ctk.CTkFrame):
         text_widget.insert(tk.END, content)
 
         text_widget.configure(state="disabled")
+
+    def _build_syntactic_tab(self):
+        content = self.get_tab_content("Sintáctico")
+        if content is None:
+            return
+
+        title = ctk.CTkLabel(
+            content,
+            text="Árbol Sintáctico (CST / AST)",
+            text_color=self.colors["comments"],
+            anchor="w",
+            font=("Segoe UI", 11),
+        )
+        title.pack(fill=tk.X, padx=8, pady=(8, 4))
+
+        # ------------------------------------------------------------------
+        # Configuración de Estilos para el Treeview (Para que cuadre con tu tema)
+        # ------------------------------------------------------------------
+        style = ttk.Style()
+        style.theme_use("clam")  # El tema 'clam' permite modificar herencias visuales con éxito
+        
+        style.configure(
+            "Treeview",
+            background=self.colors["bg"],
+            foreground=self.colors["fg"],
+            fieldbackground=self.colors["bg"],
+            font=("Segoe UI", 11),
+            rowheight=22,
+            borderwidth=0,
+        )
+        # Cambiar el color de la fila seleccionada
+        style.map(
+            "Treeview",
+            background=[("selected", self.colors["hover"])],
+            foreground=[("selected", "#ffffff")],
+        )
+        # Quitar bordes de encabezados ocultos si los hubiera
+        style.configure("Treeview.Heading", background=self.colors["title_bg"], borderwidth=0)
+
+        # ------------------------------------------------------------------
+        # Creación del Treeview
+        # ------------------------------------------------------------------
+        # Usamos show="tree" para ocultar la columna de encabezados vacía por defecto
+        self._tree_view = ttk.Treeview(content, show="tree", selectmode="browse")
+        self._tree_view.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+
+        # Insertar mensaje inicial por defecto
+        self._tree_view.insert("", "end", text="Sin análisis sintáctico ejecutado.")
+
+    def set_syntactic_tree(self, tree_data):
+        """Renderiza el árbol sintáctico. 
+        
+        Puede recibir un objeto Tree de Lark o un string con un mensaje de error.
+        """
+        if getattr(self, "_tree_view", None) is None:
+            return
+
+        # Limpiar por completo el Treeview antes de redibujar
+        self._tree_view.delete(*self._tree_view.get_children())
+
+        # Si lo que recibimos es un String (es un error o advertencia)
+        if isinstance(tree_data, str):
+            self._tree_view.insert("", "end", text=tree_data)
+            return
+
+        # Si es un objeto nodo válido de Lark, lo poblamos recursivamente
+        if tree_data is not None:
+            self._populate_tree_node("", tree_data)
+        else:
+            self._tree_view.insert("", "end", text="Árbol vacío o inválido.")
+
+    def _populate_tree_node(self, parent_id, node):
+        """Método auxiliar recursivo para desglosar el árbol de Lark en el Treeview."""
+        # Si el nodo es una regla intermedia de Lark (objeto Tree)
+        if hasattr(node, "data"):
+            # Insertamos la regla gramatical (ej: 'programa', 'declaracion') abierta por defecto
+            current_id = self._tree_view.insert(parent_id, "end", text=str(node.data), open=True)
+            
+            # Recorremos recursivamente todos sus hijos
+            for child in node.children:
+                self._populate_tree_node(current_id, child)
+        else:
+            # Si es una hoja final (un Token de Lark o un string puro)
+            token_text = str(node)
+            if hasattr(node, "type"):
+                # Formateamos el token para que muestre el Tipo y su Lexema: "ID: x"
+                token_text = f"{node.type}: {node.value}"
+            
+            self._tree_view.insert(parent_id, "end", text=token_text)
