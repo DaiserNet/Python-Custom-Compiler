@@ -55,6 +55,11 @@ class TestDeclaracionVariable(unittest.TestCase):
         decl = tree.children[0]
         self.assertEqual(decl.children[0].value, "float")
 
+    def test_declaracion_real(self):
+        tree = _ast("main { real r; }")
+        decl = tree.children[0]
+        self.assertEqual(decl.children[0].value, "real")
+
     def test_declaracion_bool(self):
         tree = _ast("main { bool flag; }")
         decl = tree.children[0]
@@ -87,7 +92,7 @@ class TestAsignacion(unittest.TestCase):
         tree = _ast("main { int x; x = 2 + 3; }")
         asig = tree.children[1]
         expr = asig.children[1]
-        self.assertEqual(expr.node_type, "(+)")
+        self.assertEqual(expr.node_type, "Operador Suma: (+)")
         self.assertEqual(expr.children[0].value, "2")
         self.assertEqual(expr.children[1].value, "3")
 
@@ -103,35 +108,35 @@ class TestSeleccion(unittest.TestCase):
     """Sentencia if/else."""
 
     def test_if_simple(self):
-        tree = _ast("main { if true then end }")
+        tree = _ast("main { if true then end ; }")
         if_node = tree.children[0]
         self.assertEqual(if_node.node_type, "If")
         self.assertEqual(if_node.children[0].value, "true")
 
     def test_if_else(self):
-        tree = _ast("main { if false then else end }")
+        tree = _ast("main { if false then else end ; }")
         if_node = tree.children[0]
         self.assertEqual(if_node.node_type, "If-Else")
 
     def test_if_con_sentencias(self):
-        tree = _ast("main { int x; if x > 0 then x = 1; else x = 0; end }")
+        tree = _ast("main { int x; if x > 0 then x = 1; else x = 0; end ; }")
         if_node = tree.children[1]
         self.assertEqual(if_node.node_type, "If-Else")
         # Condición es (>)
-        self.assertEqual(if_node.children[0].node_type, "(>)")
+        self.assertEqual(if_node.children[0].node_type, "Operador Relacion: (>)")
 
 
 class TestIteracion(unittest.TestCase):
     """Sentencia while."""
 
     def test_while_simple(self):
-        tree = _ast("main { while true end }")
+        tree = _ast("main { while (true) { } }")
         w = tree.children[0]
         self.assertEqual(w.node_type, "While")
         self.assertEqual(w.children[0].value, "true")
 
     def test_while_con_cuerpo(self):
-        tree = _ast("main { int x; while x > 0 x = x - 1; end }")
+        tree = _ast("main { int x; while (x > 0) { x = x - 1; } }")
         w = tree.children[1]
         self.assertEqual(w.node_type, "While")
         cuerpo = w.children[1]
@@ -162,25 +167,25 @@ class TestEntradaSalida(unittest.TestCase):
         tree = _ast("main { int x; cin >> x; }")
         cin = tree.children[1]
         self.assertEqual(cin.node_type, "Entrada")
-        self.assertEqual(cin.children[0].value, "x")
+        self.assertEqual(cin.children[1].value, "x")
 
     def test_cout_cadena(self):
         tree = _ast('main { cout << "hola" ; }')
         cout = tree.children[0]
         self.assertEqual(cout.node_type, "Salida")
-        self.assertEqual(cout.children[0].node_type, "Cadena")
+        self.assertEqual(cout.children[1].node_type, "Cadena")
 
     def test_cout_expresion(self):
         tree = _ast("main { int x; cout << x ; }")
         cout = tree.children[1]
         self.assertEqual(cout.node_type, "Salida")
-        self.assertEqual(cout.children[0].value, "x")
+        self.assertEqual(cout.children[1].value, "x")
 
     def test_cout_cadena_y_expresion(self):
         tree = _ast('main { int x; cout << "valor:" << x ; }')
         cout = tree.children[1]
         self.assertEqual(cout.node_type, "Salida")
-        compuesta = cout.children[0]
+        compuesta = cout.children[1]
         self.assertEqual(compuesta.node_type, "SalidaCompuesta")
 
 
@@ -190,50 +195,50 @@ class TestExpresiones(unittest.TestCase):
     def test_suma(self):
         tree = _ast("main { int x; x = 1 + 2; }")
         expr = tree.children[1].children[1]
-        self.assertEqual(expr.node_type, "(+)")
+        self.assertEqual(expr.node_type, "Operador Suma: (+)")
 
     def test_multiplicacion(self):
         tree = _ast("main { int x; x = 3 * 4; }")
         expr = tree.children[1].children[1]
-        self.assertEqual(expr.node_type, "(*)")
+        self.assertEqual(expr.node_type, "Operador Mult: (*)")
 
     def test_precedencia_mult_sobre_suma(self):
         """2 + 3 * 4 => (+) con hijos [2, (*) con hijos [3, 4]]"""
         tree = _ast("main { int x; x = 2 + 3 * 4; }")
         expr = tree.children[1].children[1]
-        self.assertEqual(expr.node_type, "(+)")
+        self.assertEqual(expr.node_type, "Operador Suma: (+)")
         self.assertEqual(expr.children[0].value, "2")
         mult = expr.children[1]
-        self.assertEqual(mult.node_type, "(*)")
+        self.assertEqual(mult.node_type, "Operador Mult: (*)")
         self.assertEqual(mult.children[0].value, "3")
         self.assertEqual(mult.children[1].value, "4")
 
     def test_potencia(self):
         tree = _ast("main { int x; x = 2 ^ 3; }")
         expr = tree.children[1].children[1]
-        self.assertEqual(expr.node_type, "(^)")
+        self.assertEqual(expr.node_type, "Operador Pot: (^)")
 
     def test_parentesis(self):
         """(2 + 3) * 4 => (*) con hijos [(+), 4]"""
         tree = _ast("main { int x; x = (2 + 3) * 4; }")
         expr = tree.children[1].children[1]
-        self.assertEqual(expr.node_type, "(*)")
-        self.assertEqual(expr.children[0].node_type, "(+)")
+        self.assertEqual(expr.node_type, "Operador Mult: (*)")
+        self.assertEqual(expr.children[0].node_type, "Operador Suma: (+)")
 
     def test_relacional(self):
-        tree = _ast("main { if 1 >= 2 then end }")
+        tree = _ast("main { if 1 >= 2 then end ; }")
         cond = tree.children[0].children[0]
-        self.assertEqual(cond.node_type, "(>=)")
+        self.assertEqual(cond.node_type, "Operador Relacion: (>=)")
 
     def test_operador_logico_not(self):
-        tree = _ast("main { if ! true then end }")
+        tree = _ast("main { if ! true then end ; }")
         cond = tree.children[0].children[0]
-        self.assertEqual(cond.node_type, "Op_Logico(!)")
+        self.assertEqual(cond.node_type, "Operador lógico: (!)")
 
     def test_operador_logico_and(self):
-        tree = _ast("main { if true && false then end }")
+        tree = _ast("main { if true && false then end ; }")
         cond = tree.children[0].children[0]
-        self.assertEqual(cond.node_type, "Op_Logico(&&)")
+        self.assertEqual(cond.node_type, "Operador lógico: (&&)")
 
     def test_numero_real(self):
         tree = _ast("main { float x; x = 3.14; }")
@@ -344,10 +349,10 @@ class TestProgramaCompleto(unittest.TestCase):
                 cout << "Mayor o igual a 10" ;
             else
                 cout << resultado ;
-            end
-            while x > 0
+            end ;
+            while (x > 0) {
                 x--;
-            end
+            }
         }
         """
         result = _parse(source)

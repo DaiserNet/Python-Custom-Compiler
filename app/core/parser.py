@@ -134,7 +134,7 @@ class ChimeraParser:
     })
 
     # Tipos de la gramática
-    _TYPE_KEYWORDS = frozenset({"int", "float", "bool"})
+    _TYPE_KEYWORDS = frozenset({"int", "float", "real", "bool"})
 
     # Operadores relacionales
     _REL_OPS = frozenset({"<", "<=", ">", ">=", "==", "!="})
@@ -406,13 +406,13 @@ class ChimeraParser:
         )
 
     def _tipo(self) -> ASTNode:
-        """tipo → int | float | bool"""
+        """tipo → int | float | real | bool"""
         tok = self._current()
         if tok and tok.lexeme in self._TYPE_KEYWORDS:
             self._advance()
             return ASTNode("Tipo", value=tok.lexeme, line=tok.line, column=tok.column)
 
-        self._error_expected("tipo (int, float, bool)")
+        self._error_expected("tipo (int, float, real, bool)")
         return ASTNode("Tipo", value="<error>", line=tok.line if tok else 1, column=tok.column if tok else 1)
 
     def _identificador_lista(self) -> List[ASTNode]:
@@ -522,7 +522,7 @@ class ChimeraParser:
         )
 
     def _seleccion(self) -> ASTNode:
-        """seleccion → if expresion then lista_sentencias [ else lista_sentencias ] end"""
+        """seleccion → if expresion then lista_sentencias [ else lista_sentencias ] end ;"""
         tok_if = self._match_lexeme("if")
         condicion = self._expresion()
         self._match_lexeme("then")
@@ -535,6 +535,7 @@ class ChimeraParser:
             bloque_else = self._lista_sentencias_bloque()
 
         self._match_lexeme("end")
+        self._match_lexeme(";")
 
         children = [condicion, bloque_then]
         node_type = "If"
@@ -545,11 +546,14 @@ class ChimeraParser:
         return ASTNode(node_type, children=children, line=tok_if.line, column=tok_if.column)
 
     def _iteracion(self) -> ASTNode:
-        """iteracion → while expresion lista_sentencias end"""
+        """iteracion → while ( expresion ) { lista_sentencias }"""
         tok_while = self._match_lexeme("while")
+        self._match_lexeme("(")
         condicion = self._expresion()
+        self._match_lexeme(")")
+        self._match_lexeme("{")
         cuerpo = self._lista_sentencias_bloque()
-        self._match_lexeme("end")
+        self._match_lexeme("}")
 
         return ASTNode(
             "While",
@@ -576,24 +580,26 @@ class ChimeraParser:
     def _sent_in(self) -> ASTNode:
         """sent_in → cin >> id ;"""
         tok_cin = self._match_lexeme("cin")
-        self._match_double(">", ">>")
+        tok_op = self._match_double(">", ">>")
         tok_id = self._match_type(TokenType.IDENTIFIER)
         self._match_lexeme(";")
 
+        op_node = ASTNode("Operador", value=">>", line=tok_op.line, column=tok_op.column)
         id_node = ASTNode("Identificador", value=tok_id.lexeme, line=tok_id.line, column=tok_id.column)
-        return ASTNode("Entrada", children=[id_node], line=tok_cin.line, column=tok_cin.column)
+        return ASTNode("Entrada", children=[op_node, id_node], line=tok_cin.line, column=tok_cin.column)
 
     def _sent_out(self) -> ASTNode:
         """sent_out → cout << salida ;
         salida → cadena | expresion | cadena << expresion | expresion << cadena
         """
         tok_cout = self._match_lexeme("cout")
-        self._match_double("<", "<<")
+        tok_op = self._match_double("<", "<<")
 
+        op_node = ASTNode("Operador", value="<<", line=tok_op.line, column=tok_op.column)
         salida_node = self._salida()
         self._match_lexeme(";")
 
-        return ASTNode("Salida", children=[salida_node], line=tok_cout.line, column=tok_cout.column)
+        return ASTNode("Salida", children=[op_node, salida_node], line=tok_cout.line, column=tok_cout.column)
 
     def _salida(self) -> ASTNode:
         """salida → cadena | expresion | cadena << expresion | expresion << cadena"""
@@ -606,11 +612,12 @@ class ChimeraParser:
 
             if self._check_double("<"):
                 # cadena << expresion
-                self._match_double("<", "<<")
+                tok_op = self._match_double("<", "<<")
                 expr = self._expresion()
+                op_node = ASTNode("Operador", value="<<", line=tok_op.line, column=tok_op.column)
                 return ASTNode(
                     "SalidaCompuesta",
-                    children=[cadena_node, expr],
+                    children=[cadena_node, op_node, expr],
                     line=cadena_tok.line,
                     column=cadena_tok.column,
                 )
@@ -621,14 +628,15 @@ class ChimeraParser:
 
             if self._check_double("<"):
                 # expresion << cadena
-                self._match_double("<", "<<")
+                tok_op = self._match_double("<", "<<")
                 tok_cad = self._current()
                 if tok_cad and tok_cad.token_type == TokenType.STRING:
                     cadena_tok = self._advance()
                     cadena_node = ASTNode("Cadena", value=cadena_tok.lexeme, line=cadena_tok.line, column=cadena_tok.column)
+                    op_node = ASTNode("Operador", value="<<", line=tok_op.line, column=tok_op.column)
                     return ASTNode(
                         "SalidaCompuesta",
-                        children=[expr, cadena_node],
+                        children=[expr, op_node, cadena_node],
                         line=expr.line,
                         column=expr.column,
                     )
@@ -681,7 +689,7 @@ class ChimeraParser:
             op_tok = self._advance()
             right = self._expresion_relacional()
             node = ASTNode(
-                f"Op_Logico({op_tok.lexeme})",
+                f"Operador lógico: ({op_tok.lexeme})",
                 children=[node, right],
                 line=op_tok.line,
                 column=op_tok.column,
@@ -698,7 +706,7 @@ class ChimeraParser:
             op_tok = self._advance()
             right = self._expresion_simple()
             return ASTNode(
-                f"({op_tok.lexeme})",
+                f"Operador Relacion: ({op_tok.lexeme})",
                 children=[left, right],
                 line=op_tok.line,
                 column=op_tok.column,
@@ -720,7 +728,7 @@ class ChimeraParser:
             op_tok = self._advance()
             right = self._termino()
             node = ASTNode(
-                f"({op_tok.lexeme})",
+                f"Operador Suma: ({op_tok.lexeme})",
                 children=[node, right],
                 line=op_tok.line,
                 column=op_tok.column,
@@ -739,7 +747,7 @@ class ChimeraParser:
             op_tok = self._advance()
             right = self._factor()
             node = ASTNode(
-                f"({op_tok.lexeme})",
+                f"Operador Mult: ({op_tok.lexeme})",
                 children=[node, right],
                 line=op_tok.line,
                 column=op_tok.column,
@@ -758,7 +766,7 @@ class ChimeraParser:
             op_tok = self._advance()
             right = self._componente()
             node = ASTNode(
-                f"({op_tok.lexeme})",
+                f"Operador Pot: ({op_tok.lexeme})",
                 children=[node, right],
                 line=op_tok.line,
                 column=op_tok.column,
@@ -781,7 +789,7 @@ class ChimeraParser:
             op_tok = self._advance()
             operand = self._componente()
             return ASTNode(
-                f"Op_Logico({op_tok.lexeme})",
+                f"Operador lógico: ({op_tok.lexeme})",
                 children=[operand],
                 line=op_tok.line,
                 column=op_tok.column,

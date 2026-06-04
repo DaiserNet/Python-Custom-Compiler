@@ -520,7 +520,6 @@ class MainWindow:
         self.root.minsize(400, 300)
         self.root.title("Chimera - VS Code Fork")
 
-        self.root.overrideredirect(True)
         self.root.after(10, self._set_appwindow)
         self._offsetx = 0
         self._offsety = 0
@@ -538,12 +537,21 @@ class MainWindow:
         try:
             import ctypes
             hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+            
+            # Quitar la barra de título nativa sin usar overrideredirect,
+            # lo que evita el bug de maximizar sobre la barra de tareas y el de selección de texto.
+            GWL_STYLE = -16
+            WS_CAPTION = 0x00C00000
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_STYLE)
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_STYLE, style & ~WS_CAPTION)
+
+            # Asegurar que aparezca en la barra de tareas
             GWL_EXSTYLE    = -20
             WS_EX_APPWINDOW = 0x00040000
             WS_EX_TOOLWINDOW = 0x00000080
-            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            style = (style & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW
-            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+            ex_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            ex_style = (ex_style & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex_style)
             self.root.withdraw()
             self.root.deiconify()
         except Exception as e:
@@ -556,7 +564,9 @@ class MainWindow:
         if self._hover_edge:
             return
         if self._is_maximized:
-            self._maximize_window()
+            self.root.state("normal")
+            self._is_maximized = False
+            self.title_bar.update_maximize_icon(self._is_maximized)
             self.x = event.x
         else:
             self.x = event.x
@@ -567,32 +577,21 @@ class MainWindow:
             self.root.geometry(f"+{event.x_root - self.x}+{event.y_root - self.y}")
 
     def _minimize_window(self):
-        self.root.withdraw()
-        self.root.overrideredirect(False)
         self.root.iconify()
-        self.root.bind("<Map>", self._restore_window_state)
-
-    def _restore_window_state(self, event):
-        self.root.overrideredirect(True)
-        self.root.unbind("<Map>")
-        self.root.after(10, self._set_appwindow)
 
     def _maximize_window(self):
         if not self._is_maximized:
             self._normal_geometry = self.root.geometry()
             try:
-                import ctypes, struct
-                scaling = ctk.get_window_scaling(self.root)
-                rect = ctypes.create_string_buffer(16)
-                ctypes.windll.user32.SystemParametersInfoA(48, 0, rect, 0)
-                left, top, right, bottom = struct.unpack("llll", rect.raw)
-                w = int((right - left) / scaling)
-                h = int((bottom - top) / scaling)
-                self.root.geometry(f"{w}x{h}+{left}+{top}")
+                self.root.state("zoomed")
             except Exception:
-                self.root.geometry(f"{self.root.winfo_screenwidth()}x{self.root.winfo_screenheight()}+0+0")
+                pass
             self._is_maximized = True
         else:
+            try:
+                self.root.state("normal")
+            except Exception:
+                pass
             self.root.geometry(self._normal_geometry)
             self._is_maximized = False
 

@@ -25,6 +25,7 @@ class LexicalAnalyzer:
         "false",
         "int",
         "float",
+        "real",
         "bool",
         "main",
         "cin",

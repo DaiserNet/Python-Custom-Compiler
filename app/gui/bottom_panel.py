@@ -218,8 +218,11 @@ class BottomPanel(ctk.CTkFrame):
             return
 
         if not errors:
+            self._syntactic_error_box.configure(text_color=self.colors["fg"])
             self._set_textbox_value(self._syntactic_error_box, "Sin errores sintácticos. Árbol AST generado con éxito.")
             return
+
+        self._syntactic_error_box.configure(text_color="#e81123")
 
         lines = []
         for idx, error in enumerate(errors, start=1):
