@@ -15,48 +15,49 @@ GRAMMAR = r"""
     bloque: instruccion*
     ?instruccion: declaracion_variable | sentencia
     
+    // Soporte para tipo 'real' añadido
     declaracion_variable: TIPO identificador ";"
-    TIPO: "int" | "float" | "bool"
+    TIPO: "int" | "float" | "bool" | "real"
     identificador: ID ("," ID)*
     
-    ?sentencia: seleccion | iteracion | repeticion | sent_in | sent_out | asignacion
+    // Agregamos 'inc_dec' como una sentencia válida
+    ?sentencia: seleccion | iteracion | repeticion | sent_in | sent_out | asignacion | inc_dec
     asignacion: ID "=" sent_expresion
     
     ?sent_expresion: expresion ";" | ";"
     
-    // Las palabras if, then, else, while desaparecerán, dejando solo los datos útiles
-    seleccion: "if" expresion "then" bloque ("else" bloque)? "end"
-    iteracion: "while" expresion bloque "end"
-    repeticion: "do" bloque "while" expresion
+    // Estructuras de control adaptadas al archivo de prueba
+    seleccion: "if" expresion "then" bloque ("else" bloque)? "end" ";"?
+    iteracion: "while" expresion "{" bloque "}" ";"?
+    repeticion: "do" bloque "until" expresion ";"?
     
-    sent_in: "cin" ">>" ID ";"
-    sent_out: "cout" "<<" salida
-    salida: CADENA | expresion | CADENA "<<" expresion | expresion "<<" CADENA
+    // Remoción de los operadores << y >> para cin/cout directos
+    sent_in: "cin" ID ";"
+    sent_out: "cout" expresion ";"
     
-    // === JERARQUÍA DE OPERADORES CORREGIDA ===
+    // Sentencia dedicada para incremento y decremento posfijo
+    inc_dec: ID INC_DEC_OP ";"
+    INC_DEC_OP: "++" | "--"
+    
+    // === JERARQUÍA DE OPERADORES ===
     ?expresion: expresion_logica
 
-    // 1. Nivel más bajo: AND y OR (Infijos)
     ?expresion_logica: expresion_relacional (OP_AND_OR expresion_relacional)*
     OP_AND_OR: "&&" | "||"
     
-    // 2. Nivel relacional: Mayor, menor, igual (Infijos)
     ?expresion_relacional: expresion_simple (REL_OP expresion_simple)?
     REL_OP: "<" | "<=" | ">" | ">=" | "==" | "!="
     
-    // 3. Sumas y restas
+    // Se removieron '++' y '--' de aquí para evitar conflictos binarios
     ?expresion_simple: termino (SUMA_OP termino)*
-    SUMA_OP: "+" | "-" | "++" | "--"
+    SUMA_OP: "+" | "-"
     
-    // 4. Multiplicaciones y divisiones
     ?termino: factor (MULT_OP factor)*
     MULT_OP: "*" | "/" | "%"
     
-    // 5. Potencias
     ?factor: componente (POT_OP componente)*
     POT_OP: "^"
     
-    // 6. Nivel más alto: Valores literales, paréntesis y NOT (Prefijo)
     ?componente: "(" expresion ")" | NUMERO | ID | BOOL_VAL | OP_NOT componente
     OP_NOT: "!"
 
@@ -105,7 +106,13 @@ class ChimeraASTTransformer(Transformer):
     
     def repeticion(self, items):
         # items contiene solo: bloque, condición
-        return Tree("Do-While", [items[0], items[1]])
+        return Tree("Do-Until", [items[0], items[1]])
+    
+    def inc_dec(self, items):
+        # Mapea los incrementos/decrementos unarios posfijos en el AST
+        variable = items[0]
+        operador = str(items[1])
+        return Tree(f"Post_Op ({operador})", [variable])
 
     # --- Procesador Genérico para operaciones binarias (aritméticas y lógicas) ---
     def _build_binary_tree(self, items):
